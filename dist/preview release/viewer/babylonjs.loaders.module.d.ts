@@ -34,20 +34,15 @@ declare module "babylonjs-loaders/glTF/glTFFileLoader" {
     import { Nullable } from "babylonjs/types";
     import { Observable } from "babylonjs/Misc/observable";
     import { Camera } from "babylonjs/Cameras/camera";
-    import { AnimationGroup } from "babylonjs/Animations/animationGroup";
-    import { Skeleton } from "babylonjs/Bones/skeleton";
-    import { IParticleSystem } from "babylonjs/Particles/IParticleSystem";
     import { BaseTexture } from "babylonjs/Materials/Textures/baseTexture";
     import { Material } from "babylonjs/Materials/material";
     import { AbstractMesh } from "babylonjs/Meshes/abstractMesh";
-    import { ISceneLoaderPluginFactory, ISceneLoaderPlugin, ISceneLoaderPluginAsync, ISceneLoaderProgressEvent, ISceneLoaderPluginExtensions } from "babylonjs/Loading/sceneLoader";
+    import { ISceneLoaderPluginFactory, ISceneLoaderPlugin, ISceneLoaderPluginAsync, ISceneLoaderProgressEvent, ISceneLoaderPluginExtensions, ISceneLoaderAsyncResult } from "babylonjs/Loading/sceneLoader";
     import { AssetContainer } from "babylonjs/assetContainer";
     import { Scene, IDisposable } from "babylonjs/scene";
     import { WebRequest } from "babylonjs/Misc/webRequest";
     import { IFileRequest } from "babylonjs/Misc/fileRequest";
     import { IDataBuffer } from 'babylonjs/Misc/dataReader';
-    import { Light } from 'babylonjs/Lights/light';
-    import { TransformNode } from 'babylonjs/Meshes/transformNode';
     import { RequestFileError } from 'babylonjs/Misc/fileTools';
     /**
      * Mode that determines the coordinate system to use.
@@ -128,18 +123,9 @@ declare module "babylonjs-loaders/glTF/glTFFileLoader" {
         COMPLETE = 2
     }
     /** @hidden */
-    export interface IImportMeshAsyncOutput {
-        meshes: AbstractMesh[];
-        particleSystems: IParticleSystem[];
-        skeletons: Skeleton[];
-        animationGroups: AnimationGroup[];
-        lights: Light[];
-        transformNodes: TransformNode[];
-    }
-    /** @hidden */
     export interface IGLTFLoader extends IDisposable {
         readonly state: Nullable<GLTFLoaderState>;
-        importMeshAsync: (meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string) => Promise<IImportMeshAsyncOutput>;
+        importMeshAsync: (meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string) => Promise<ISceneLoaderAsyncResult>;
         loadAsync: (scene: Scene, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string) => Promise<void>;
     }
     /**
@@ -209,16 +195,26 @@ declare module "babylonjs-loaders/glTF/glTFFileLoader" {
          */
         createInstances: boolean;
         /**
+         * Defines if the loader should always compute the bounding boxes of meshes and not use the min/max values from the position accessor. Defaults to false.
+         */
+        alwaysComputeBoundingBox: boolean;
+        /**
+         * If true, load all materials defined in the file, even if not used by any mesh. Defaults to false.
+         */
+        loadAllMaterials: boolean;
+        /**
          * Function called before loading a url referenced by the asset.
          */
         preprocessUrlAsync: (url: string) => Promise<string>;
         /**
          * Observable raised when the loader creates a mesh after parsing the glTF properties of the mesh.
+         * Note that the observable is raised as soon as the mesh object is created, meaning some data may not have been setup yet for this mesh (vertex data, morph targets, material, ...)
          */
         readonly onMeshLoadedObservable: Observable<AbstractMesh>;
         private _onMeshLoadedObserver;
         /**
          * Callback raised when the loader creates a mesh after parsing the glTF properties of the mesh.
+         * Note that the callback is called as soon as the mesh object is created, meaning some data may not have been setup yet for this mesh (vertex data, morph targets, material, ...)
          */
         set onMeshLoaded(callback: (mesh: AbstractMesh) => void);
         /**
@@ -315,6 +311,7 @@ declare module "babylonjs-loaders/glTF/glTFFileLoader" {
         private _loader;
         private _progressCallback?;
         private _requests;
+        private static magicBase64Encoded;
         /**
          * Name of the loader ("gltf")
          */
@@ -330,12 +327,7 @@ declare module "babylonjs-loaders/glTF/glTFFileLoader" {
         /** @hidden */
         readFile(scene: Scene, file: File, onSuccess: (data: any) => void, onProgress?: (ev: ISceneLoaderProgressEvent) => any, useArrayBuffer?: boolean, onError?: (error: any) => void): IFileRequest;
         /** @hidden */
-        importMeshAsync(meshesNames: any, scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<{
-            meshes: AbstractMesh[];
-            particleSystems: IParticleSystem[];
-            skeletons: Skeleton[];
-            animationGroups: AnimationGroup[];
-        }>;
+        importMeshAsync(meshesNames: any, scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<ISceneLoaderAsyncResult>;
         /** @hidden */
         loadAsync(scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<void>;
         /** @hidden */
@@ -343,7 +335,7 @@ declare module "babylonjs-loaders/glTF/glTFFileLoader" {
         /** @hidden */
         canDirectLoad(data: string): boolean;
         /** @hidden */
-        directLoad(scene: Scene, data: string): any;
+        directLoad(scene: Scene, data: string): Promise<any>;
         /**
          * The callback that allows custom handling of the root url based on the response url.
          * @param rootUrl the original root url
@@ -878,9 +870,9 @@ declare module "babylonjs-loaders/glTF/1.0/glTFLoader" {
     import { Nullable } from "babylonjs/types";
     import { Material } from "babylonjs/Materials/material";
     import { Texture } from "babylonjs/Materials/Textures/texture";
-    import { ISceneLoaderProgressEvent } from "babylonjs/Loading/sceneLoader";
+    import { ISceneLoaderAsyncResult, ISceneLoaderProgressEvent } from "babylonjs/Loading/sceneLoader";
     import { Scene } from "babylonjs/scene";
-    import { IGLTFLoader, GLTFLoaderState, IGLTFLoaderData, IImportMeshAsyncOutput } from "babylonjs-loaders/glTF/glTFFileLoader";
+    import { IGLTFLoader, GLTFLoaderState, IGLTFLoaderData } from "babylonjs-loaders/glTF/glTFFileLoader";
     /**
     * Implementation of the base glTF spec
     * @hidden
@@ -915,7 +907,7 @@ declare module "babylonjs-loaders/glTF/1.0/glTFLoader" {
         * @param onProgress event that fires when loading progress has occured
         * @returns a promise containg the loaded meshes, particles, skeletons and animations
         */
-        importMeshAsync(meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void): Promise<IImportMeshAsyncOutput>;
+        importMeshAsync(meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void): Promise<ISceneLoaderAsyncResult>;
         private _loadAsync;
         /**
         * Imports all objects from a loaded gltf file and adds them to the scene
@@ -1198,11 +1190,15 @@ declare module "babylonjs-loaders/glTF/2.0/glTFLoaderInterfaces" {
      * Loader interface with additional members.
      */
     export interface ITexture extends GLTF2.ITexture, IArrayItem {
+        /** @hidden */
+        _textureInfo: ITextureInfo;
     }
     /**
      * Loader interface with additional members.
      */
     export interface ITextureInfo extends GLTF2.ITextureInfo {
+        /** false or undefined if the texture holds color data (true if data are roughness, normal, ...) */
+        nonColorData?: boolean;
     }
     /**
      * Loader interface with additional members.
@@ -1300,7 +1296,7 @@ declare module "babylonjs-loaders/glTF/2.0/glTFLoaderExtension" {
          * @param assign A function called synchronously after parsing the glTF properties
          * @returns A promise that resolves with the loaded Babylon material when the load is complete or null if not handled
          */
-        _loadMaterialAsync?(context: string, material: IMaterial, babylonMesh: Mesh, babylonDrawMode: number, assign: (babylonMaterial: Material) => void): Nullable<Promise<Material>>;
+        _loadMaterialAsync?(context: string, material: IMaterial, babylonMesh: Nullable<Mesh>, babylonDrawMode: number, assign: (babylonMaterial: Material) => void): Nullable<Promise<Material>>;
         /**
          * Define this method to modify the default behavior when creating materials.
          * @param context The context when loading the asset
@@ -1386,12 +1382,12 @@ declare module "babylonjs-loaders/glTF/2.0/glTFLoader" {
     import { TransformNode } from "babylonjs/Meshes/transformNode";
     import { AbstractMesh } from "babylonjs/Meshes/abstractMesh";
     import { Mesh } from "babylonjs/Meshes/mesh";
-    import { ISceneLoaderProgressEvent } from "babylonjs/Loading/sceneLoader";
+    import { ISceneLoaderAsyncResult, ISceneLoaderProgressEvent } from "babylonjs/Loading/sceneLoader";
     import { Scene } from "babylonjs/scene";
     import { IProperty } from "babylonjs-gltf2interface";
     import { IGLTF, ISampler, INode, IScene, IMesh, IAccessor, ICamera, IAnimation, IAnimationChannel, IBufferView, IMaterial, ITextureInfo, ITexture, IImage, IMeshPrimitive, IArrayItem as IArrItem } from "babylonjs-loaders/glTF/2.0/glTFLoaderInterfaces";
     import { IGLTFLoaderExtension } from "babylonjs-loaders/glTF/2.0/glTFLoaderExtension";
-    import { IGLTFLoader, GLTFFileLoader, GLTFLoaderState, IGLTFLoaderData, IImportMeshAsyncOutput } from "babylonjs-loaders/glTF/glTFFileLoader";
+    import { IGLTFLoader, GLTFFileLoader, GLTFLoaderState, IGLTFLoaderData } from "babylonjs-loaders/glTF/glTFFileLoader";
     import { IAnimatable } from 'babylonjs/Animations/animatable.interface';
     import { IDataBuffer } from 'babylonjs/Misc/dataReader';
     import { Light } from 'babylonjs/Lights/light';
@@ -1483,7 +1479,7 @@ declare module "babylonjs-loaders/glTF/2.0/glTFLoader" {
         /** @hidden */
         dispose(): void;
         /** @hidden */
-        importMeshAsync(meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<IImportMeshAsyncOutput>;
+        importMeshAsync(meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<ISceneLoaderAsyncResult>;
         /** @hidden */
         loadAsync(scene: Scene, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<void>;
         private _loadAsync;
@@ -1501,6 +1497,7 @@ declare module "babylonjs-loaders/glTF/2.0/glTFLoader" {
          */
         loadSceneAsync(context: string, scene: IScene): Promise<void>;
         private _forEachPrimitive;
+        private _getGeometries;
         private _getMeshes;
         private _getTransformNodes;
         private _getSkeletons;
@@ -1581,7 +1578,7 @@ declare module "babylonjs-loaders/glTF/2.0/glTFLoader" {
         private _loadVertexAccessorAsync;
         private _loadMaterialMetallicRoughnessPropertiesAsync;
         /** @hidden */
-        _loadMaterialAsync(context: string, material: IMaterial, babylonMesh: Mesh, babylonDrawMode: number, assign?: (babylonMaterial: Material) => void): Promise<Material>;
+        _loadMaterialAsync(context: string, material: IMaterial, babylonMesh: Nullable<Mesh>, babylonDrawMode: number, assign?: (babylonMaterial: Material) => void): Promise<Material>;
         private _createDefaultMaterial;
         /**
          * Creates a Babylon material from a glTF material.
@@ -1626,7 +1623,7 @@ declare module "babylonjs-loaders/glTF/2.0/glTFLoader" {
         /** @hidden */
         _loadTextureAsync(context: string, texture: ITexture, assign?: (babylonTexture: BaseTexture) => void): Promise<BaseTexture>;
         /** @hidden */
-        _createTextureAsync(context: string, sampler: ISampler, image: IImage, assign?: (babylonTexture: BaseTexture) => void): Promise<BaseTexture>;
+        _createTextureAsync(context: string, sampler: ISampler, image: IImage, assign?: (babylonTexture: BaseTexture) => void, textureLoaderOptions?: any): Promise<BaseTexture>;
         private _loadSampler;
         /**
          * Loads a glTF image.
@@ -1657,7 +1654,8 @@ declare module "babylonjs-loaders/glTF/2.0/glTFLoader" {
         private static _GetTypedArray;
         private static _GetNumComponents;
         private static _ValidateUri;
-        private static _GetDrawMode;
+        /** @hidden */
+        static _GetDrawMode(context: string, mode: number | undefined): number;
         private _compileMaterialsAsync;
         private _compileShadowGeneratorsAsync;
         private _forEachExtensions;
@@ -1731,9 +1729,17 @@ declare module "babylonjs-loaders/glTF/2.0/glTFLoader" {
 }
 declare module "babylonjs-loaders/glTF/2.0/Extensions/EXT_lights_image_based" {
     import { Nullable } from "babylonjs/types";
+    import { BaseTexture } from "babylonjs/Materials/Textures/baseTexture";
     import { IScene } from "babylonjs-loaders/glTF/2.0/glTFLoaderInterfaces";
     import { IGLTFLoaderExtension } from "babylonjs-loaders/glTF/2.0/glTFLoaderExtension";
     import { GLTFLoader } from "babylonjs-loaders/glTF/2.0/glTFLoader";
+    module "babylonjs-gltf2interface" {
+        /** @hidden */
+        interface IEXTLightsImageBased_LightImageBased {
+            _babylonTexture?: BaseTexture;
+            _loaded?: Promise<void>;
+        }
+    }
     /**
      * [Specification](https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Vendor/EXT_lights_image_based/README.md)
      */
@@ -1786,6 +1792,29 @@ declare module "babylonjs-loaders/glTF/2.0/Extensions/EXT_mesh_gpu_instancing" {
         dispose(): void;
         /** @hidden */
         loadNodeAsync(context: string, node: INode, assign: (babylonTransformNode: TransformNode) => void): Nullable<Promise<TransformNode>>;
+    }
+}
+declare module "babylonjs-loaders/glTF/2.0/Extensions/EXT_texture_webp" {
+    import { IGLTFLoaderExtension } from "babylonjs-loaders/glTF/2.0/glTFLoaderExtension";
+    import { GLTFLoader } from "babylonjs-loaders/glTF/2.0/glTFLoader";
+    import { ITexture } from "babylonjs-loaders/glTF/2.0/glTFLoaderInterfaces";
+    import { BaseTexture } from "babylonjs/Materials/Textures/baseTexture";
+    import { Nullable } from "babylonjs/types";
+    /**
+     * [Specification](https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Vendor/EXT_texture_webp/)
+     */
+    export class EXT_texture_webp implements IGLTFLoaderExtension {
+        /** The name of this extension. */
+        readonly name: string;
+        /** Defines whether this extension is enabled. */
+        enabled: boolean;
+        private _loader;
+        /** @hidden */
+        constructor(loader: GLTFLoader);
+        /** @hidden */
+        dispose(): void;
+        /** @hidden */
+        _loadTextureAsync(context: string, texture: ITexture, assign: (babylonTexture: BaseTexture) => void): Nullable<Promise<BaseTexture>>;
     }
 }
 declare module "babylonjs-loaders/glTF/2.0/Extensions/KHR_draco_mesh_compression" {
@@ -1922,9 +1951,8 @@ declare module "babylonjs-loaders/glTF/2.0/Extensions/KHR_materials_clearcoat" {
     import { IGLTFLoaderExtension } from "babylonjs-loaders/glTF/2.0/glTFLoaderExtension";
     import { GLTFLoader } from "babylonjs-loaders/glTF/2.0/glTFLoader";
     /**
-     * [Proposed Specification](https://github.com/KhronosGroup/glTF/pull/1677)
+     * [Specification](https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Khronos/KHR_materials_clearcoat/README.md)
      * [Playground Sample](https://www.babylonjs-playground.com/frame.html#7F7PN6#8)
-     * !!! Experimental Extension Subject to Changes !!!
      */
     export class KHR_materials_clearcoat implements IGLTFLoaderExtension {
         /**
@@ -2057,6 +2085,7 @@ declare module "babylonjs-loaders/glTF/2.0/Extensions/KHR_materials_variants" {
     import { Nullable } from "babylonjs/types";
     import { IGLTFLoaderExtension } from "babylonjs-loaders/glTF/2.0/glTFLoaderExtension";
     import { GLTFLoader } from "babylonjs-loaders/glTF/2.0/glTFLoader";
+    import { Mesh } from 'babylonjs/Meshes/mesh';
     import { AbstractMesh } from 'babylonjs/Meshes/abstractMesh';
     import { INode, IMeshPrimitive, IMesh } from "babylonjs-loaders/glTF/2.0/glTFLoaderInterfaces";
     /**
@@ -2073,32 +2102,58 @@ declare module "babylonjs-loaders/glTF/2.0/Extensions/KHR_materials_variants" {
          */
         enabled: boolean;
         private _loader;
-        /**
-         * The default variant name.
-         */
-        defaultVariant: string | undefined;
-        private _tagsToMap;
+        private _variants?;
         /** @hidden */
         constructor(loader: GLTFLoader);
         /** @hidden */
         dispose(): void;
         /**
-         * Return a list of available variants for this asset.
-         * @returns {string[]}
+         * Gets the list of available variant names for this asset.
+         * @param rootMesh The glTF root mesh
+         * @returns the list of all the variant names for this model
          */
-        getVariants(): string[];
+        static GetAvailableVariants(rootMesh: Mesh): string[];
         /**
-         * Select a variant by providing a list of variant tag names.
-         *
-         * @param {(string | string[])} variantName
+         * Gets the list of available variant names for this asset.
+         * @param rootMesh The glTF root mesh
+         * @returns the list of all the variant names for this model
          */
-        selectVariant(variantName: string | string[]): void;
+        getAvailableVariants(rootMesh: Mesh): string[];
         /**
-         * Select a variant by providing a single variant tag.
-         *
-         * @param {string} variantName
+         * Select a variant given a variant name or a list of variant names.
+         * @param rootMesh The glTF root mesh
+         * @param variantName The variant name(s) to select.
          */
-        selectVariantTag(variantName: string): void;
+        static SelectVariant(rootMesh: Mesh, variantName: string | string[]): void;
+        /**
+         * Select a variant given a variant name or a list of variant names.
+         * @param rootMesh The glTF root mesh
+         * @param variantName The variant name(s) to select.
+         */
+        selectVariant(rootMesh: Mesh, variantName: string | string[]): void;
+        /**
+         * Reset back to the original before selecting a variant.
+         * @param rootMesh The glTF root mesh
+         */
+        static Reset(rootMesh: Mesh): void;
+        /**
+         * Reset back to the original before selecting a variant.
+         * @param rootMesh The glTF root mesh
+         */
+        reset(rootMesh: Mesh): void;
+        /**
+         * Gets the last selected variant name(s) or null if original.
+         * @param rootMesh The glTF root mesh
+         * @returns The selected variant name(s).
+         */
+        static GetLastSelectedVariant(rootMesh: Mesh): Nullable<string | string[]>;
+        /**
+         * Gets the last selected variant name(s) or null if original.
+         * @param rootMesh The glTF root mesh
+         * @returns The selected variant name(s).
+         */
+        getLastSelectedVariant(rootMesh: Mesh): Nullable<string | string[]>;
+        private static _GetExtensionMetadata;
         /** @hidden */
         onLoading(): void;
         /** @hidden */
@@ -2136,6 +2191,39 @@ declare module "babylonjs-loaders/glTF/2.0/Extensions/KHR_materials_transmission
         /** @hidden */
         loadMaterialPropertiesAsync(context: string, material: IMaterial, babylonMaterial: Material): Nullable<Promise<void>>;
         private _loadTransparentPropertiesAsync;
+    }
+}
+declare module "babylonjs-loaders/glTF/2.0/Extensions/KHR_materials_translucency" {
+    import { Nullable } from "babylonjs/types";
+    import { Material } from "babylonjs/Materials/material";
+    import { IMaterial } from "babylonjs-loaders/glTF/2.0/glTFLoaderInterfaces";
+    import { IGLTFLoaderExtension } from "babylonjs-loaders/glTF/2.0/glTFLoaderExtension";
+    import { GLTFLoader } from "babylonjs-loaders/glTF/2.0/glTFLoader";
+    /**
+     * [Proposed Specification](https://github.com/KhronosGroup/glTF/pull/1825)
+     * !!! Experimental Extension Subject to Changes !!!
+     */
+    export class KHR_materials_translucency implements IGLTFLoaderExtension {
+        /**
+         * The name of this extension.
+         */
+        readonly name: string;
+        /**
+         * Defines whether this extension is enabled.
+         */
+        enabled: boolean;
+        /**
+         * Defines a number that determines the order the extensions are applied.
+         */
+        order: number;
+        private _loader;
+        /** @hidden */
+        constructor(loader: GLTFLoader);
+        /** @hidden */
+        dispose(): void;
+        /** @hidden */
+        loadMaterialPropertiesAsync(context: string, material: IMaterial, babylonMaterial: Material): Nullable<Promise<void>>;
+        private _loadTranslucentPropertiesAsync;
     }
 }
 declare module "babylonjs-loaders/glTF/2.0/Extensions/KHR_mesh_quantization" {
@@ -2208,37 +2296,6 @@ declare module "babylonjs-loaders/glTF/2.0/Extensions/KHR_texture_transform" {
         dispose(): void;
         /** @hidden */
         loadTextureInfoAsync(context: string, textureInfo: ITextureInfo, assign: (babylonTexture: BaseTexture) => void): Nullable<Promise<BaseTexture>>;
-    }
-}
-declare module "babylonjs-loaders/glTF/2.0/Extensions/KHR_xmp" {
-    import { IGLTFLoaderExtension } from "babylonjs-loaders/glTF/2.0/glTFLoaderExtension";
-    import { GLTFLoader } from "babylonjs-loaders/glTF/2.0/glTFLoader";
-    /**
-     * [Proposed Specification](https://github.com/KhronosGroup/glTF/pull/1553)
-     * !!! Experimental Extension Subject to Changes !!!
-     */
-    export class KHR_xmp implements IGLTFLoaderExtension {
-        /**
-         * The name of this extension.
-         */
-        readonly name: string;
-        /**
-         * Defines whether this extension is enabled.
-         */
-        enabled: boolean;
-        /**
-         * Defines a number that determines the order the extensions are applied.
-         */
-        order: number;
-        private _loader;
-        /** @hidden */
-        constructor(loader: GLTFLoader);
-        /** @hidden */
-        dispose(): void;
-        /**
-         * Called after the loader state changes to LOADING.
-         */
-        onLoading(): void;
     }
 }
 declare module "babylonjs-loaders/glTF/2.0/Extensions/MSFT_audio_emitter" {
@@ -2344,7 +2401,7 @@ declare module "babylonjs-loaders/glTF/2.0/Extensions/MSFT_lod" {
         /** @hidden */
         loadNodeAsync(context: string, node: INode, assign: (babylonTransformNode: TransformNode) => void): Nullable<Promise<TransformNode>>;
         /** @hidden */
-        _loadMaterialAsync(context: string, material: IMaterial, babylonMesh: Mesh, babylonDrawMode: number, assign: (babylonMaterial: Material) => void): Nullable<Promise<Material>>;
+        _loadMaterialAsync(context: string, material: IMaterial, babylonMesh: Nullable<Mesh>, babylonDrawMode: number, assign: (babylonMaterial: Material) => void): Nullable<Promise<Material>>;
         /** @hidden */
         _loadUriAsync(context: string, property: IProperty, uri: string): Nullable<Promise<ArrayBufferView>>;
         /** @hidden */
@@ -2427,6 +2484,7 @@ declare module "babylonjs-loaders/glTF/2.0/Extensions/ExtrasAsMetadata" {
 declare module "babylonjs-loaders/glTF/2.0/Extensions/index" {
     export * from "babylonjs-loaders/glTF/2.0/Extensions/EXT_lights_image_based";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/EXT_mesh_gpu_instancing";
+    export * from "babylonjs-loaders/glTF/2.0/Extensions/EXT_texture_webp";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/KHR_draco_mesh_compression";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/KHR_lights_punctual";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/KHR_materials_pbrSpecularGlossiness";
@@ -2437,10 +2495,10 @@ declare module "babylonjs-loaders/glTF/2.0/Extensions/index" {
     export * from "babylonjs-loaders/glTF/2.0/Extensions/KHR_materials_ior";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/KHR_materials_variants";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/KHR_materials_transmission";
+    export * from "babylonjs-loaders/glTF/2.0/Extensions/KHR_materials_translucency";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/KHR_mesh_quantization";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/KHR_texture_basisu";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/KHR_texture_transform";
-    export * from "babylonjs-loaders/glTF/2.0/Extensions/KHR_xmp";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/MSFT_audio_emitter";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/MSFT_lod";
     export * from "babylonjs-loaders/glTF/2.0/Extensions/MSFT_minecraftMesh";
@@ -2502,11 +2560,7 @@ declare module "babylonjs-loaders/OBJ/mtlFileLoader" {
 }
 declare module "babylonjs-loaders/OBJ/objFileLoader" {
     import { Vector2 } from "babylonjs/Maths/math.vector";
-    import { AnimationGroup } from "babylonjs/Animations/animationGroup";
-    import { Skeleton } from "babylonjs/Bones/skeleton";
-    import { IParticleSystem } from "babylonjs/Particles/IParticleSystem";
-    import { AbstractMesh } from "babylonjs/Meshes/abstractMesh";
-    import { ISceneLoaderPluginAsync, ISceneLoaderProgressEvent, ISceneLoaderPluginFactory, ISceneLoaderPlugin } from "babylonjs/Loading/sceneLoader";
+    import { ISceneLoaderPluginAsync, ISceneLoaderProgressEvent, ISceneLoaderPluginFactory, ISceneLoaderPlugin, ISceneLoaderAsyncResult } from "babylonjs/Loading/sceneLoader";
     import { AssetContainer } from "babylonjs/assetContainer";
     import { Scene } from "babylonjs/scene";
     /**
@@ -2663,12 +2717,7 @@ declare module "babylonjs-loaders/OBJ/objFileLoader" {
          * @param fileName Defines the name of the file to load
          * @returns a promise containg the loaded meshes, particles, skeletons and animations
          */
-        importMeshAsync(meshesNames: any, scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<{
-            meshes: AbstractMesh[];
-            particleSystems: IParticleSystem[];
-            skeletons: Skeleton[];
-            animationGroups: AnimationGroup[];
-        }>;
+        importMeshAsync(meshesNames: any, scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<ISceneLoaderAsyncResult>;
         /**
          * Imports all objects from the loaded OBJ data and adds them to the scene
          * @param scene the scene the objects should be added to
@@ -2935,18 +2984,9 @@ declare module BABYLON {
         COMPLETE = 2
     }
     /** @hidden */
-    export interface IImportMeshAsyncOutput {
-        meshes: AbstractMesh[];
-        particleSystems: IParticleSystem[];
-        skeletons: Skeleton[];
-        animationGroups: AnimationGroup[];
-        lights: Light[];
-        transformNodes: TransformNode[];
-    }
-    /** @hidden */
     export interface IGLTFLoader extends IDisposable {
         readonly state: Nullable<GLTFLoaderState>;
-        importMeshAsync: (meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string) => Promise<IImportMeshAsyncOutput>;
+        importMeshAsync: (meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string) => Promise<ISceneLoaderAsyncResult>;
         loadAsync: (scene: Scene, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string) => Promise<void>;
     }
     /**
@@ -3016,16 +3056,26 @@ declare module BABYLON {
          */
         createInstances: boolean;
         /**
+         * Defines if the loader should always compute the bounding boxes of meshes and not use the min/max values from the position accessor. Defaults to false.
+         */
+        alwaysComputeBoundingBox: boolean;
+        /**
+         * If true, load all materials defined in the file, even if not used by any mesh. Defaults to false.
+         */
+        loadAllMaterials: boolean;
+        /**
          * Function called before loading a url referenced by the asset.
          */
         preprocessUrlAsync: (url: string) => Promise<string>;
         /**
          * Observable raised when the loader creates a mesh after parsing the glTF properties of the mesh.
+         * Note that the observable is raised as soon as the mesh object is created, meaning some data may not have been setup yet for this mesh (vertex data, morph targets, material, ...)
          */
         readonly onMeshLoadedObservable: Observable<AbstractMesh>;
         private _onMeshLoadedObserver;
         /**
          * Callback raised when the loader creates a mesh after parsing the glTF properties of the mesh.
+         * Note that the callback is called as soon as the mesh object is created, meaning some data may not have been setup yet for this mesh (vertex data, morph targets, material, ...)
          */
         set onMeshLoaded(callback: (mesh: AbstractMesh) => void);
         /**
@@ -3122,6 +3172,7 @@ declare module BABYLON {
         private _loader;
         private _progressCallback?;
         private _requests;
+        private static magicBase64Encoded;
         /**
          * Name of the loader ("gltf")
          */
@@ -3137,12 +3188,7 @@ declare module BABYLON {
         /** @hidden */
         readFile(scene: Scene, file: File, onSuccess: (data: any) => void, onProgress?: (ev: ISceneLoaderProgressEvent) => any, useArrayBuffer?: boolean, onError?: (error: any) => void): IFileRequest;
         /** @hidden */
-        importMeshAsync(meshesNames: any, scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<{
-            meshes: AbstractMesh[];
-            particleSystems: IParticleSystem[];
-            skeletons: Skeleton[];
-            animationGroups: AnimationGroup[];
-        }>;
+        importMeshAsync(meshesNames: any, scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<ISceneLoaderAsyncResult>;
         /** @hidden */
         loadAsync(scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<void>;
         /** @hidden */
@@ -3150,7 +3196,7 @@ declare module BABYLON {
         /** @hidden */
         canDirectLoad(data: string): boolean;
         /** @hidden */
-        directLoad(scene: Scene, data: string): any;
+        directLoad(scene: Scene, data: string): Promise<any>;
         /**
          * The callback that allows custom handling of the root url based on the response url.
          * @param rootUrl the original root url
@@ -3705,7 +3751,7 @@ declare module BABYLON.GLTF1 {
         * @param onProgress event that fires when loading progress has occured
         * @returns a promise containg the loaded meshes, particles, skeletons and animations
         */
-        importMeshAsync(meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void): Promise<IImportMeshAsyncOutput>;
+        importMeshAsync(meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void): Promise<ISceneLoaderAsyncResult>;
         private _loadAsync;
         /**
         * Imports all objects from a loaded gltf file and adds them to the scene
@@ -3965,11 +4011,15 @@ declare module BABYLON.GLTF2.Loader {
      * Loader interface with additional members.
      */
     export interface ITexture extends BABYLON.GLTF2.ITexture, IArrayItem {
+        /** @hidden */
+        _textureInfo: ITextureInfo;
     }
     /**
      * Loader interface with additional members.
      */
     export interface ITextureInfo extends BABYLON.GLTF2.ITextureInfo {
+        /** false or undefined if the texture holds color data (true if data are roughness, normal, ...) */
+        nonColorData?: boolean;
     }
     /**
      * Loader interface with additional members.
@@ -4054,7 +4104,7 @@ declare module BABYLON.GLTF2 {
          * @param assign A function called synchronously after parsing the glTF properties
          * @returns A promise that resolves with the loaded Babylon material when the load is complete or null if not handled
          */
-        _loadMaterialAsync?(context: string, material: IMaterial, babylonMesh: Mesh, babylonDrawMode: number, assign: (babylonMaterial: Material) => void): Nullable<Promise<Material>>;
+        _loadMaterialAsync?(context: string, material: IMaterial, babylonMesh: Nullable<Mesh>, babylonDrawMode: number, assign: (babylonMaterial: Material) => void): Nullable<Promise<Material>>;
         /**
          * Define this method to modify the default behavior when creating materials.
          * @param context The context when loading the asset
@@ -4220,7 +4270,7 @@ declare module BABYLON.GLTF2 {
         /** @hidden */
         dispose(): void;
         /** @hidden */
-        importMeshAsync(meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<IImportMeshAsyncOutput>;
+        importMeshAsync(meshesNames: any, scene: Scene, forAssetContainer: boolean, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<ISceneLoaderAsyncResult>;
         /** @hidden */
         loadAsync(scene: Scene, data: IGLTFLoaderData, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<void>;
         private _loadAsync;
@@ -4238,6 +4288,7 @@ declare module BABYLON.GLTF2 {
          */
         loadSceneAsync(context: string, scene: IScene): Promise<void>;
         private _forEachPrimitive;
+        private _getGeometries;
         private _getMeshes;
         private _getTransformNodes;
         private _getSkeletons;
@@ -4318,7 +4369,7 @@ declare module BABYLON.GLTF2 {
         private _loadVertexAccessorAsync;
         private _loadMaterialMetallicRoughnessPropertiesAsync;
         /** @hidden */
-        _loadMaterialAsync(context: string, material: IMaterial, babylonMesh: Mesh, babylonDrawMode: number, assign?: (babylonMaterial: Material) => void): Promise<Material>;
+        _loadMaterialAsync(context: string, material: IMaterial, babylonMesh: Nullable<Mesh>, babylonDrawMode: number, assign?: (babylonMaterial: Material) => void): Promise<Material>;
         private _createDefaultMaterial;
         /**
          * Creates a Babylon material from a glTF material.
@@ -4363,7 +4414,7 @@ declare module BABYLON.GLTF2 {
         /** @hidden */
         _loadTextureAsync(context: string, texture: ITexture, assign?: (babylonTexture: BaseTexture) => void): Promise<BaseTexture>;
         /** @hidden */
-        _createTextureAsync(context: string, sampler: ISampler, image: IImage, assign?: (babylonTexture: BaseTexture) => void): Promise<BaseTexture>;
+        _createTextureAsync(context: string, sampler: ISampler, image: IImage, assign?: (babylonTexture: BaseTexture) => void, textureLoaderOptions?: any): Promise<BaseTexture>;
         private _loadSampler;
         /**
          * Loads a glTF image.
@@ -4394,7 +4445,8 @@ declare module BABYLON.GLTF2 {
         private static _GetTypedArray;
         private static _GetNumComponents;
         private static _ValidateUri;
-        private static _GetDrawMode;
+        /** @hidden */
+        static _GetDrawMode(context: string, mode: number | undefined): number;
         private _compileMaterialsAsync;
         private _compileShadowGeneratorsAsync;
         private _forEachExtensions;
@@ -4467,6 +4519,11 @@ declare module BABYLON.GLTF2 {
     }
 }
 declare module BABYLON.GLTF2.Loader.Extensions {
+        /** @hidden */
+        interface IEXTLightsImageBased_LightImageBased {
+            _babylonTexture?: BaseTexture;
+            _loaded?: Promise<void>;
+        }
     /**
      * [Specification](https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Vendor/EXT_lights_image_based/README.md)
      */
@@ -4514,6 +4571,24 @@ declare module BABYLON.GLTF2.Loader.Extensions {
         dispose(): void;
         /** @hidden */
         loadNodeAsync(context: string, node: INode, assign: (babylonTransformNode: TransformNode) => void): Nullable<Promise<TransformNode>>;
+    }
+}
+declare module BABYLON.GLTF2.Loader.Extensions {
+    /**
+     * [Specification](https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Vendor/EXT_texture_webp/)
+     */
+    export class EXT_texture_webp implements IGLTFLoaderExtension {
+        /** The name of this extension. */
+        readonly name: string;
+        /** Defines whether this extension is enabled. */
+        enabled: boolean;
+        private _loader;
+        /** @hidden */
+        constructor(loader: GLTFLoader);
+        /** @hidden */
+        dispose(): void;
+        /** @hidden */
+        _loadTextureAsync(context: string, texture: ITexture, assign: (babylonTexture: BaseTexture) => void): Nullable<Promise<BaseTexture>>;
     }
 }
 declare module BABYLON.GLTF2.Loader.Extensions {
@@ -4623,9 +4698,8 @@ declare module BABYLON.GLTF2.Loader.Extensions {
 }
 declare module BABYLON.GLTF2.Loader.Extensions {
     /**
-     * [Proposed Specification](https://github.com/KhronosGroup/glTF/pull/1677)
+     * [Specification](https://github.com/KhronosGroup/glTF/blob/master/extensions/2.0/Khronos/KHR_materials_clearcoat/README.md)
      * [Playground Sample](https://www.babylonjs-playground.com/frame.html#7F7PN6#8)
-     * !!! Experimental Extension Subject to Changes !!!
      */
     export class KHR_materials_clearcoat implements IGLTFLoaderExtension {
         /**
@@ -4754,32 +4828,58 @@ declare module BABYLON.GLTF2.Loader.Extensions {
          */
         enabled: boolean;
         private _loader;
-        /**
-         * The default variant name.
-         */
-        defaultVariant: string | undefined;
-        private _tagsToMap;
+        private _variants?;
         /** @hidden */
         constructor(loader: GLTFLoader);
         /** @hidden */
         dispose(): void;
         /**
-         * Return a list of available variants for this asset.
-         * @returns {string[]}
+         * Gets the list of available variant names for this asset.
+         * @param rootMesh The glTF root mesh
+         * @returns the list of all the variant names for this model
          */
-        getVariants(): string[];
+        static GetAvailableVariants(rootMesh: Mesh): string[];
         /**
-         * Select a variant by providing a list of variant tag names.
-         *
-         * @param {(string | string[])} variantName
+         * Gets the list of available variant names for this asset.
+         * @param rootMesh The glTF root mesh
+         * @returns the list of all the variant names for this model
          */
-        selectVariant(variantName: string | string[]): void;
+        getAvailableVariants(rootMesh: Mesh): string[];
         /**
-         * Select a variant by providing a single variant tag.
-         *
-         * @param {string} variantName
+         * Select a variant given a variant name or a list of variant names.
+         * @param rootMesh The glTF root mesh
+         * @param variantName The variant name(s) to select.
          */
-        selectVariantTag(variantName: string): void;
+        static SelectVariant(rootMesh: Mesh, variantName: string | string[]): void;
+        /**
+         * Select a variant given a variant name or a list of variant names.
+         * @param rootMesh The glTF root mesh
+         * @param variantName The variant name(s) to select.
+         */
+        selectVariant(rootMesh: Mesh, variantName: string | string[]): void;
+        /**
+         * Reset back to the original before selecting a variant.
+         * @param rootMesh The glTF root mesh
+         */
+        static Reset(rootMesh: Mesh): void;
+        /**
+         * Reset back to the original before selecting a variant.
+         * @param rootMesh The glTF root mesh
+         */
+        reset(rootMesh: Mesh): void;
+        /**
+         * Gets the last selected variant name(s) or null if original.
+         * @param rootMesh The glTF root mesh
+         * @returns The selected variant name(s).
+         */
+        static GetLastSelectedVariant(rootMesh: Mesh): Nullable<string | string[]>;
+        /**
+         * Gets the last selected variant name(s) or null if original.
+         * @param rootMesh The glTF root mesh
+         * @returns The selected variant name(s).
+         */
+        getLastSelectedVariant(rootMesh: Mesh): Nullable<string | string[]>;
+        private static _GetExtensionMetadata;
         /** @hidden */
         onLoading(): void;
         /** @hidden */
@@ -4812,6 +4912,34 @@ declare module BABYLON.GLTF2.Loader.Extensions {
         /** @hidden */
         loadMaterialPropertiesAsync(context: string, material: IMaterial, babylonMaterial: Material): Nullable<Promise<void>>;
         private _loadTransparentPropertiesAsync;
+    }
+}
+declare module BABYLON.GLTF2.Loader.Extensions {
+    /**
+     * [Proposed Specification](https://github.com/KhronosGroup/glTF/pull/1825)
+     * !!! Experimental Extension Subject to Changes !!!
+     */
+    export class KHR_materials_translucency implements IGLTFLoaderExtension {
+        /**
+         * The name of this extension.
+         */
+        readonly name: string;
+        /**
+         * Defines whether this extension is enabled.
+         */
+        enabled: boolean;
+        /**
+         * Defines a number that determines the order the extensions are applied.
+         */
+        order: number;
+        private _loader;
+        /** @hidden */
+        constructor(loader: GLTFLoader);
+        /** @hidden */
+        dispose(): void;
+        /** @hidden */
+        loadMaterialPropertiesAsync(context: string, material: IMaterial, babylonMaterial: Material): Nullable<Promise<void>>;
+        private _loadTranslucentPropertiesAsync;
     }
 }
 declare module BABYLON.GLTF2.Loader.Extensions {
@@ -4872,35 +5000,6 @@ declare module BABYLON.GLTF2.Loader.Extensions {
         dispose(): void;
         /** @hidden */
         loadTextureInfoAsync(context: string, textureInfo: ITextureInfo, assign: (babylonTexture: BaseTexture) => void): Nullable<Promise<BaseTexture>>;
-    }
-}
-declare module BABYLON.GLTF2.Loader.Extensions {
-    /**
-     * [Proposed Specification](https://github.com/KhronosGroup/glTF/pull/1553)
-     * !!! Experimental Extension Subject to Changes !!!
-     */
-    export class KHR_xmp implements IGLTFLoaderExtension {
-        /**
-         * The name of this extension.
-         */
-        readonly name: string;
-        /**
-         * Defines whether this extension is enabled.
-         */
-        enabled: boolean;
-        /**
-         * Defines a number that determines the order the extensions are applied.
-         */
-        order: number;
-        private _loader;
-        /** @hidden */
-        constructor(loader: GLTFLoader);
-        /** @hidden */
-        dispose(): void;
-        /**
-         * Called after the loader state changes to LOADING.
-         */
-        onLoading(): void;
     }
 }
 declare module BABYLON.GLTF2.Loader.Extensions {
@@ -4991,7 +5090,7 @@ declare module BABYLON.GLTF2.Loader.Extensions {
         /** @hidden */
         loadNodeAsync(context: string, node: INode, assign: (babylonTransformNode: TransformNode) => void): Nullable<Promise<TransformNode>>;
         /** @hidden */
-        _loadMaterialAsync(context: string, material: IMaterial, babylonMesh: Mesh, babylonDrawMode: number, assign: (babylonMaterial: Material) => void): Nullable<Promise<Material>>;
+        _loadMaterialAsync(context: string, material: IMaterial, babylonMesh: Nullable<Mesh>, babylonDrawMode: number, assign: (babylonMaterial: Material) => void): Nullable<Promise<Material>>;
         /** @hidden */
         _loadUriAsync(context: string, property: IProperty, uri: string): Nullable<Promise<ArrayBufferView>>;
         /** @hidden */
@@ -5247,12 +5346,7 @@ declare module BABYLON {
          * @param fileName Defines the name of the file to load
          * @returns a promise containg the loaded meshes, particles, skeletons and animations
          */
-        importMeshAsync(meshesNames: any, scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<{
-            meshes: AbstractMesh[];
-            particleSystems: IParticleSystem[];
-            skeletons: Skeleton[];
-            animationGroups: AnimationGroup[];
-        }>;
+        importMeshAsync(meshesNames: any, scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<ISceneLoaderAsyncResult>;
         /**
          * Imports all objects from the loaded OBJ data and adds them to the scene
          * @param scene the scene the objects should be added to

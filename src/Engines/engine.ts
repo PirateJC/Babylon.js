@@ -1,8 +1,7 @@
 import { Observable } from "../Misc/observable";
-import { Nullable, IndicesArray, DataArray } from "../types";
+import { Nullable } from "../types";
 import { Scene } from "../scene";
 import { InternalTexture } from "../Materials/Textures/internalTexture";
-import { IAudioEngine } from "../Audio/audioEngine";
 import { IOfflineProvider } from "../Offline/IOfflineProvider";
 import { ILoadingScreen } from "../Loading/loadingScreen";
 import { DomManagement } from "../Misc/domManagement";
@@ -23,6 +22,8 @@ import { Logger } from '../Misc/logger';
 
 import "./Extensions/engine.alpha";
 import "./Extensions/engine.readTexture";
+import "./Extensions/engine.dynamicBuffer";
+import { IAudioEngine } from '../Audio/Interfaces/IAudioEngine';
 
 declare type Material = import("../Materials/material").Material;
 declare type PostProcess = import("../PostProcesses/postProcess").PostProcess;
@@ -399,7 +400,7 @@ export class Engine extends ThinEngine {
 
     /**
      * Gets the audio engine
-     * @see http://doc.babylonjs.com/how_to/playing_sounds_and_music
+     * @see https://doc.babylonjs.com/how_to/playing_sounds_and_music
      * @ignorenaming
      */
     public static audioEngine: IAudioEngine;
@@ -447,7 +448,7 @@ export class Engine extends ThinEngine {
     private _performanceMonitor = new PerformanceMonitor();
     /**
      * Gets the performance monitor attached to this engine
-     * @see http://doc.babylonjs.com/how_to/optimizing_your_scene#engineinstrumentation
+     * @see https://doc.babylonjs.com/how_to/optimizing_your_scene#engineinstrumentation
      */
     public get performanceMonitor(): PerformanceMonitor {
         return this._performanceMonitor;
@@ -483,13 +484,13 @@ export class Engine extends ThinEngine {
     constructor(canvasOrContext: Nullable<HTMLCanvasElement | WebGLRenderingContext>, antialias?: boolean, options?: EngineOptions, adaptToDeviceRatio: boolean = false) {
         super(canvasOrContext, antialias, options, adaptToDeviceRatio);
 
+        Engine.Instances.push(this);
+
         if (!canvasOrContext) {
             return;
         }
 
         options = this._creationOptions;
-
-        Engine.Instances.push(this);
 
         if ((<any>canvasOrContext).getContext) {
             let canvas = <HTMLCanvasElement>canvasOrContext;
@@ -640,7 +641,7 @@ export class Engine extends ThinEngine {
 
     /**
      * Gets a boolean indicating that the engine is running in deterministic lock step mode
-     * @see http://doc.babylonjs.com/babylon101/animations#deterministic-lockstep
+     * @see https://doc.babylonjs.com/babylon101/animations#deterministic-lockstep
      * @returns true if engine is in deterministic lock step mode
      */
     public isDeterministicLockStep(): boolean {
@@ -649,7 +650,7 @@ export class Engine extends ThinEngine {
 
     /**
      * Gets the max steps when engine is running in deterministic lock step
-     * @see http://doc.babylonjs.com/babylon101/animations#deterministic-lockstep
+     * @see https://doc.babylonjs.com/babylon101/animations#deterministic-lockstep
      * @returns the max steps
      */
     public getLockstepMaxSteps(): number {
@@ -1066,7 +1067,7 @@ export class Engine extends ThinEngine {
     /**
      * Call this function to leave webVR mode
      * Will do nothing if webVR is not supported or if there is no webVR device
-     * @see http://doc.babylonjs.com/how_to/webvr_camera
+     * @see https://doc.babylonjs.com/how_to/webvr_camera
      */
     public disableVR() {
         // Do nothing as the engine side effect will overload it
@@ -1312,13 +1313,16 @@ export class Engine extends ThinEngine {
      * Force a specific size of the canvas
      * @param width defines the new canvas' width
      * @param height defines the new canvas' height
+     * @returns true if the size was changed
      */
-    public setSize(width: number, height: number): void {
+    public setSize(width: number, height: number): boolean {
         if (!this._renderingCanvas) {
-            return;
+            return false;
         }
 
-        super.setSize(width, height);
+        if (!super.setSize(width, height)) {
+            return false;
+        }
 
         if (this.scenes) {
             for (var index = 0; index < this.scenes.length; index++) {
@@ -1335,45 +1339,8 @@ export class Engine extends ThinEngine {
                 this.onResizeObservable.notifyObservers(this);
             }
         }
-    }
 
-    /**
-     * Updates a dynamic vertex buffer.
-     * @param vertexBuffer the vertex buffer to update
-     * @param data the data used to update the vertex buffer
-     * @param byteOffset the byte offset of the data
-     * @param byteLength the byte length of the data
-     */
-    public updateDynamicVertexBuffer(vertexBuffer: DataBuffer, data: DataArray, byteOffset?: number, byteLength?: number): void {
-        this.bindArrayBuffer(vertexBuffer);
-
-        if (byteOffset === undefined) {
-            byteOffset = 0;
-        }
-
-        const dataLength = (data as number[]).length || (data as ArrayBuffer).byteLength;
-
-        if (byteLength === undefined || byteLength >= dataLength && byteOffset === 0) {
-            if (data instanceof Array) {
-                this._gl.bufferSubData(this._gl.ARRAY_BUFFER, byteOffset, new Float32Array(data));
-            } else {
-                this._gl.bufferSubData(this._gl.ARRAY_BUFFER, byteOffset, <ArrayBuffer>data);
-            }
-        } else {
-            if (data instanceof Array) {
-                this._gl.bufferSubData(this._gl.ARRAY_BUFFER, 0, new Float32Array(data).subarray(byteOffset, byteOffset + byteLength));
-            } else {
-                if (data instanceof ArrayBuffer) {
-                    data = new Uint8Array(data, byteOffset, byteLength);
-                } else {
-                    data = new Uint8Array(data.buffer, data.byteOffset + byteOffset, byteLength);
-                }
-
-                this._gl.bufferSubData(this._gl.ARRAY_BUFFER, 0, <ArrayBuffer>data);
-            }
-        }
-
-        this._resetVertexBufferBinding();
+        return true;
     }
 
     public _deletePipelineContext(pipelineContext: IPipelineContext): void {
@@ -1558,31 +1525,8 @@ export class Engine extends ThinEngine {
     }
 
     /**
-     * Update a dynamic index buffer
-     * @param indexBuffer defines the target index buffer
-     * @param indices defines the data to update
-     * @param offset defines the offset in the target index buffer where update should start
-     */
-    public updateDynamicIndexBuffer(indexBuffer: DataBuffer, indices: IndicesArray, offset: number = 0): void {
-        // Force cache update
-        this._currentBoundBuffer[this._gl.ELEMENT_ARRAY_BUFFER] = null;
-        this.bindIndexBuffer(indexBuffer);
-        var arrayBuffer;
-
-        if (indices instanceof Uint16Array || indices instanceof Uint32Array) {
-            arrayBuffer = indices;
-        } else {
-            arrayBuffer = indexBuffer.is32Bits ? new Uint32Array(indices) : new Uint16Array(indices);
-        }
-
-        this._gl.bufferData(this._gl.ELEMENT_ARRAY_BUFFER, arrayBuffer, this._gl.DYNAMIC_DRAW);
-
-        this._resetIndexBufferBinding();
-    }
-
-    /**
      * Updates the sample count of a render target texture
-     * @see http://doc.babylonjs.com/features/webgl2#multisample-render-targets
+     * @see https://doc.babylonjs.com/features/webgl2#multisample-render-targets
      * @param texture defines the texture to update
      * @param samples defines the sample count to set
      * @returns the effective sample count (could be 0 if multisample render targets are not supported)
@@ -1859,7 +1803,7 @@ export class Engine extends ThinEngine {
 
     /**
      * Display the loading screen
-     * @see http://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
+     * @see https://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
      */
     public displayLoadingUI(): void {
         if (!DomManagement.IsWindowObjectExist()) {
@@ -1873,7 +1817,7 @@ export class Engine extends ThinEngine {
 
     /**
      * Hide the loading screen
-     * @see http://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
+     * @see https://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
      */
     public hideLoadingUI(): void {
         if (!DomManagement.IsWindowObjectExist()) {
@@ -1887,7 +1831,7 @@ export class Engine extends ThinEngine {
 
     /**
      * Gets the current loading screen object
-     * @see http://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
+     * @see https://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
      */
     public get loadingScreen(): ILoadingScreen {
         if (!this._loadingScreen && this._renderingCanvas) {
@@ -1898,7 +1842,7 @@ export class Engine extends ThinEngine {
 
     /**
      * Sets the current loading screen object
-     * @see http://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
+     * @see https://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
      */
     public set loadingScreen(loadingScreen: ILoadingScreen) {
         this._loadingScreen = loadingScreen;
@@ -1906,7 +1850,7 @@ export class Engine extends ThinEngine {
 
     /**
      * Sets the current loading screen text
-     * @see http://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
+     * @see https://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
      */
     public set loadingUIText(text: string) {
         this.loadingScreen.loadingUIText = text;
@@ -1914,7 +1858,7 @@ export class Engine extends ThinEngine {
 
     /**
      * Sets the current loading screen background color
-     * @see http://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
+     * @see https://doc.babylonjs.com/how_to/creating_a_custom_loading_screen
      */
     public set loadingUIBackgroundColor(color: string) {
         this.loadingScreen.loadingUIBackgroundColor = color;

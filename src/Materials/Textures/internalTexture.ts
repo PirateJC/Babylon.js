@@ -106,6 +106,8 @@ export class InternalTexture {
      * Gets the URL used to load this texture
      */
     public url: string = "";
+    /** @hidden */
+    public _originalUrl: string; // not empty only if different from url
     /**
      * Gets the sampling mode of the texture
      */
@@ -195,6 +197,8 @@ export class InternalTexture {
     /** @hidden */
     public _attachments: Nullable<number[]> = null;
     /** @hidden */
+    public _textureArray: Nullable<InternalTexture[]> = null;
+    /** @hidden */
     public _cachedCoordinatesMode: Nullable<number> = null;
     /** @hidden */
     public _cachedWrapU: Nullable<number> = null;
@@ -250,6 +254,9 @@ export class InternalTexture {
     public _webGLTexture: Nullable<WebGLTexture> = null;
     /** @hidden */
     public _references: number = 1;
+
+    /** @hidden */
+    public _gammaSpace: Nullable<boolean> = null;
 
     private _engine: ThinEngine;
 
@@ -322,7 +329,7 @@ export class InternalTexture {
                 return;
 
             case InternalTextureSource.Url:
-                proxy = this._engine.createTexture(this.url, !this.generateMipMaps, this.invertY, null, this.samplingMode, () => {
+                proxy = this._engine.createTexture(this._originalUrl ?? this.url, !this.generateMipMaps, this.invertY, null, this.samplingMode, () => {
                     proxy._swapAndDie(this);
                     this.isReady = true;
                 }, null, this._buffer, undefined, this.format);

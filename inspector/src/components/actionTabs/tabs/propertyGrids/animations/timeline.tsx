@@ -1,31 +1,160 @@
-
 import * as React from "react";
-import { IAnimationKey } from 'babylonjs/Animations/animationKey';
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCaretRight, faCaretLeft, faStepBackward, faStepForward, faPlay, faPause } from "@fortawesome/free-solid-svg-icons";
+import { IAnimationKey } from "babylonjs/Animations/animationKey";
+import { Controls } from "./controls";
 
 interface ITimelineProps {
     keyframes: IAnimationKey[] | null;
     selected: IAnimationKey | null;
     currentFrame: number;
     onCurrentFrameChange: (frame: number) => void;
+    onAnimationLimitChange: (limit: number) => void;
     dragKeyframe: (frame: number, index: number) => void;
     playPause: (direction: number) => void;
     isPlaying: boolean;
+    animationLimit: number;
+    fps: number;
+    repositionCanvas: (keyframe: IAnimationKey) => void;
+    resizeWindowProportion: number;
 }
 
-
-export class Timeline extends React.Component<ITimelineProps, { selected: IAnimationKey, activeKeyframe: number | null }>{
-    readonly _frames: object[] = Array(300).fill({});
+/**
+ * The Timeline for the curve editor
+ *
+ * Has a scrollbar that can be resized and move to left and right. 
+ * The timeline does not affect the Canvas but only the frame container.
+ */
+export class Timeline extends React.Component<
+    ITimelineProps,
+    {
+        selected: IAnimationKey;
+        activeKeyframe: number | null;
+        start: number;
+        end: number;
+        scrollWidth: number | undefined;
+        selectionLength: number[];
+        limitValue: number;
+    }
+> {
+    // Div Elements to display the timeline
     private _scrollable: React.RefObject<HTMLDivElement>;
+    private _scrollbarHandle: React.RefObject<HTMLDivElement>;
+    private _scrollContainer: React.RefObject<HTMLDivElement>;
+    private _inputAnimationLimit: React.RefObject<HTMLInputElement>;
+    // Direction of drag and resize of timeline
     private _direction: number;
+    private _scrolling: boolean;
+    private _shiftX: number;
+    private _active: string = "";
+    // Margin of scrollbar and container
+    readonly _marginScrollbar: number;
+
     constructor(props: ITimelineProps) {
         super(props);
-        if (this.props.selected !== null) {
-            this.state = { selected: this.props.selected, activeKeyframe: null };
-        }
+
         this._scrollable = React.createRef();
+        this._scrollbarHandle = React.createRef();
+        this._scrollContainer = React.createRef();
+        this._inputAnimationLimit = React.createRef();
         this._direction = 0;
+        this._scrolling = false;
+        this._shiftX = 0;
+        this._marginScrollbar = 3;
+
+        // Limit as Int because is related to Frames.
+        const limit = Math.round(this.props.animationLimit / 2);
+        const scrollWidth = this.calculateScrollWidth(0, limit);
+
+        if (this.props.selected !== null) {
+            this.state = {
+                selected: this.props.selected,
+                activeKeyframe: null,
+                start: 0,
+                end: limit,
+                scrollWidth: scrollWidth,
+                selectionLength: this.range(0, limit),
+                limitValue: this.props.animationLimit,
+            };
+        }
+    }
+
+    componentDidMount() {
+        setTimeout(() => {
+            this.setState({
+                scrollWidth: this.calculateScrollWidth(this.state.start, this.state.end),
+            });
+        }, 0);
+
+        this._inputAnimationLimit.current?.addEventListener("keyup", this.isEnterKeyUp.bind(this));
+    }
+
+    componentDidUpdate(prevProps: ITimelineProps) {
+        if (prevProps.animationLimit !== this.props.animationLimit) {
+            this.setState({ limitValue: this.props.animationLimit });
+        }
+        if (prevProps.resizeWindowProportion !== this.props.resizeWindowProportion) {
+            if (this.state.scrollWidth !== undefined) {
+                this.setState({ scrollWidth: this.calculateScrollWidth(this.state.start, this.state.end) });
+            }
+        }
+    }
+
+    componentWillUnmount() {
+        this._inputAnimationLimit.current?.removeEventListener("keyup", this.isEnterKeyUp.bind(this));
+    }
+
+    isEnterKeyUp(event: KeyboardEvent) {
+        event.preventDefault();
+        if (event.key === "Enter") {
+            this.setControlState();
+        }
+    }
+
+    onInputBlur(event: React.FocusEvent<HTMLInputElement>) {
+        event.preventDefault();
+        this.setControlState();
+    }
+
+    setControlState() {
+        this.props.onAnimationLimitChange(this.state.limitValue);
+        const newEnd = Math.round(this.state.limitValue / 2);
+        this.setState(
+            {
+                start: 0,
+                end: newEnd,
+                selectionLength: this.range(0, newEnd),
+            },
+            () => {
+                this.setState({
+                    scrollWidth: this.calculateScrollWidth(0, newEnd),
+                });
+                if (this._scrollbarHandle.current && this._scrollContainer.current) {
+                    this._scrollbarHandle.current.style.left = `${
+                        this._scrollContainer.current.getBoundingClientRect().left + this._marginScrollbar
+                    }px`;
+                }
+            }
+        );
+    }
+
+    /**
+    * @param {number} start Frame from which the scrollbar should begin.
+    * @param {number} end Last frame for the timeline.
+    */
+    calculateScrollWidth(start: number, end: number) {
+        if (this._scrollContainer.current && this.props.animationLimit !== 0) {
+            const containerMarginLeftRight = this._marginScrollbar * 2;
+            const containerWidth = this._scrollContainer.current.clientWidth - containerMarginLeftRight;
+            const scrollFrameLimit = this.props.animationLimit;
+            const scrollFrameLength = end - start;
+            const widthPercentage = Math.round((scrollFrameLength * 100) / scrollFrameLimit);
+            const scrollPixelWidth = Math.round((widthPercentage * containerWidth) / 100);
+            if (scrollPixelWidth === Infinity || scrollPixelWidth > containerWidth) {
+                return containerWidth;
+            }
+            return scrollPixelWidth;
+        } else {
+            return undefined;
+        }
     }
 
     playBackwards(event: React.MouseEvent<HTMLDivElement>) {
@@ -42,88 +171,65 @@ export class Timeline extends React.Component<ITimelineProps, { selected: IAnima
         }
     }
 
-    handleInputChange(event: React.ChangeEvent<HTMLInputElement>) {
-        this.props.onCurrentFrameChange(parseInt(event.target.value));
+    setCurrentFrame = (event: React.MouseEvent<HTMLDivElement>) => {
         event.preventDefault();
-    }
-
-    nextFrame(event: React.MouseEvent<HTMLDivElement>) {
-        event.preventDefault();
-        this.props.onCurrentFrameChange(this.props.currentFrame + 1);
-        (this._scrollable.current as HTMLDivElement).scrollLeft = this.props.currentFrame * 5;
-    }
-
-    previousFrame(event: React.MouseEvent<HTMLDivElement>) {
-        event.preventDefault();
-        if (this.props.currentFrame !== 0) {
-            this.props.onCurrentFrameChange(this.props.currentFrame - 1);
-            (this._scrollable.current as HTMLDivElement).scrollLeft = -(this.props.currentFrame * 5);
+        if (this._scrollable.current) {
+            this._scrollable.current.focus();
+            const containerWidth = this._scrollable.current?.clientWidth - 20;
+            const framesOnView = this.state.selectionLength.length;
+            const unit = containerWidth / framesOnView;
+            const frame = Math.round((event.clientX - 230) / unit) + this.state.start;
+            this.props.onCurrentFrameChange(frame);
         }
-    }
+    };
 
-    nextKeyframe(event: React.MouseEvent<HTMLDivElement>) {
+    /**
+    * Handles the change of number of frames available in the timeline.
+    */
+    handleLimitChange(event: React.ChangeEvent<HTMLInputElement>) {
         event.preventDefault();
-        if (this.props.keyframes !== null) {
-            let first = this.props.keyframes.find(kf => kf.frame > this.props.currentFrame);
-            if (first) {
-                this.props.onCurrentFrameChange(first.frame);
-                this.setState({ selected: first });
-                (this._scrollable.current as HTMLDivElement).scrollLeft = first.frame * 5;
-            }
+        let newLimit = parseInt(event.target.value);
+        if (isNaN(newLimit)) {
+            newLimit = 0;
         }
+        this.setState({
+            limitValue: newLimit,
+        });
     }
 
-    previousKeyframe(event: React.MouseEvent<HTMLDivElement>) {
-        event.preventDefault();
-        if (this.props.keyframes !== null) {
-            let keyframes = [...this.props.keyframes]
-            let first = keyframes.reverse().find(kf => kf.frame < this.props.currentFrame);
-            if (first) {
-                this.props.onCurrentFrameChange(first.frame);
-                this.setState({ selected: first });
-                (this._scrollable.current as HTMLDivElement).scrollLeft = -(first.frame * 5);
-            }
-        }
-    }
-
-    dragStart(e: React.TouchEvent<SVGSVGElement>): void;
-    dragStart(e: React.MouseEvent<SVGSVGElement, MouseEvent>): void;
-    dragStart(e: any): void {
+    dragStart = (e: React.MouseEvent<SVGSVGElement, MouseEvent>): void => {
         e.preventDefault();
-        this.setState({ activeKeyframe: parseInt(e.target.id.replace('kf_', '')) });
+        this.setState({ activeKeyframe: parseInt((e.target as SVGSVGElement).id.replace("kf_", "")) });
         this._direction = e.clientX;
+    };
 
-    }
-
-    drag(e: React.TouchEvent<SVGSVGElement>): void;
-    drag(e: React.MouseEvent<SVGSVGElement, MouseEvent>): void;
-    drag(e: any): void {
+    drag = (e: React.MouseEvent<SVGSVGElement, MouseEvent>): void => {
         e.preventDefault();
         if (this.props.keyframes) {
-            if (this.state.activeKeyframe === parseInt(e.target.id.replace('kf_', ''))) {
+            if (this.state.activeKeyframe === parseInt((e.target as SVGSVGElement).id.replace("kf_", ""))) {
                 let updatedKeyframe = this.props.keyframes[this.state.activeKeyframe];
                 if (this._direction > e.clientX) {
-                    console.log(`Dragging left ${this.state.activeKeyframe}`);
                     let used = this.isFrameBeingUsed(updatedKeyframe.frame - 1, -1);
                     if (used) {
-                        updatedKeyframe.frame = used
+                        updatedKeyframe.frame = used;
                     }
                 } else {
-                    console.log(`Dragging Right ${this.state.activeKeyframe}`)
                     let used = this.isFrameBeingUsed(updatedKeyframe.frame + 1, 1);
                     if (used) {
-                        updatedKeyframe.frame = used
+                        updatedKeyframe.frame = used;
                     }
                 }
 
                 this.props.dragKeyframe(updatedKeyframe.frame, this.state.activeKeyframe);
-
             }
         }
-    }
+    };
 
+    /**
+    * Check if the frame is being used as a Keyframe by the animation
+    */
     isFrameBeingUsed(frame: number, direction: number) {
-        let used = this.props.keyframes?.find(kf => kf.frame === frame);
+        let used = this.props.keyframes?.find((kf) => kf.frame === frame);
         if (used) {
             this.isFrameBeingUsed(used.frame + direction, direction);
             return false;
@@ -132,75 +238,317 @@ export class Timeline extends React.Component<ITimelineProps, { selected: IAnima
         }
     }
 
-    dragEnd(e: React.TouchEvent<SVGSVGElement>): void;
-    dragEnd(e: React.MouseEvent<SVGSVGElement, MouseEvent>): void;
-    dragEnd(e: any): void {
+    dragEnd = (e: React.MouseEvent<SVGSVGElement, MouseEvent>): void => {
         e.preventDefault();
         this._direction = 0;
-        this.setState({ activeKeyframe: null })
+        this.setState({ activeKeyframe: null });
+    };
+
+    scrollDragStart = (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
+        e.preventDefault();
+        this._scrollContainer.current && this._scrollContainer.current.focus();
+
+        if ((e.target as HTMLDivElement).className === "scrollbar") {
+            if (this._scrollbarHandle.current) {
+                this._scrolling = true;
+                this._shiftX = e.clientX - this._scrollbarHandle.current.getBoundingClientRect().left;
+                this._scrollbarHandle.current.style.left = e.pageX - this._shiftX + "px";
+            }
+        }
+
+        if ((e.target as HTMLDivElement).className === "left-draggable" && this._scrollbarHandle.current) {
+            this._active = "leftDraggable";
+            this._shiftX = e.clientX - this._scrollbarHandle.current.getBoundingClientRect().left - 3;
+        }
+
+        if ((e.target as HTMLDivElement).className === "right-draggable" && this._scrollbarHandle.current) {
+            this._active = "rightDraggable";
+            this._shiftX = e.clientX - this._scrollbarHandle.current.getBoundingClientRect().left + 3;
+        }
+    };
+
+    scrollDrag = (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
+        e.preventDefault();
+        if ((e.target as HTMLDivElement).className === "scrollbar") {
+            this.moveScrollbar(e.pageX);
+        }
+
+        if (this._active === "leftDraggable") {
+            this.resizeScrollbarLeft(e.clientX);
+        }
+
+        if (this._active === "rightDraggable") {
+            this.resizeScrollbarRight(e.clientX);
+        }
+    };
+
+    scrollDragEnd = (e: React.MouseEvent<HTMLDivElement, MouseEvent>): void => {
+        e.preventDefault();
+        this._scrolling = false;
+        this._active = "";
+        this._shiftX = 0;
+    };
+
+    /**
+    * Sets the start, end and selection length of the scrollbar. This will control the width and
+    * height of the scrollbar as well as the number of frames available
+    * @param {number} pageX Controls the X axis of the scrollbar movement.
+    */
+    moveScrollbar(pageX: number) {
+        if (this._scrolling && this._scrollbarHandle.current && this._scrollContainer.current) {
+            const moved = pageX - this._shiftX;
+            const scrollContainerWith = this._scrollContainer.current.clientWidth;
+            const startPixel = moved - this._scrollContainer.current.getBoundingClientRect().left;
+            const limitRight = scrollContainerWith - (this.state.scrollWidth || 0) - this._marginScrollbar;
+
+            if (moved > 233 && startPixel < limitRight) {
+                this._scrollbarHandle.current.style.left = moved + "px";
+                (this._scrollable.current as HTMLDivElement).scrollLeft = moved + 10;
+
+                const startPixelPercent = (startPixel * 100) / scrollContainerWith;
+
+                const selectionStartFrame = Math.round((startPixelPercent * this.props.animationLimit) / 100);
+
+                const selectionEndFrame = this.state.selectionLength.length + selectionStartFrame;
+
+                this.setState({
+                    start: selectionStartFrame,
+                    end: selectionEndFrame,
+                    selectionLength: this.range(selectionStartFrame, selectionEndFrame),
+                });
+            }
+        }
     }
+
+    /**
+    * Controls the resizing of the scrollbar from the right handle
+    */
+    resizeScrollbarRight(clientX: number) {
+        if (this._scrollContainer.current && this._scrollbarHandle.current) {
+            const moving = clientX - this._scrollContainer.current.getBoundingClientRect().left;
+
+            const unit = this._scrollContainer.current.clientWidth / this.props.animationLimit;
+            const priorLastFrame = this.state.end * unit;
+            const mouseMoved = moving - priorLastFrame;
+
+            let framesTo = 0;
+            if (Math.sign(mouseMoved) !== -1) {
+                framesTo = Math.round(mouseMoved / unit) + this.state.end;
+            } else {
+                framesTo = this.state.end - Math.round(Math.abs(mouseMoved) / unit);
+            }
+
+            if (!(framesTo <= this.state.start + 20)) {
+                if (framesTo <= this.props.animationLimit) {
+                    this.setState({
+                        end: framesTo,
+                        scrollWidth: this.calculateScrollWidth(this.state.start, framesTo),
+                        selectionLength: this.range(this.state.start, framesTo),
+                    });
+                }
+            }
+        }
+    }
+
+    /**
+    * Controls the resizing of the scrollbar from the left handle
+    */
+    resizeScrollbarLeft(clientX: number) {
+        if (this._scrollContainer.current && this._scrollbarHandle.current) {
+            const moving = clientX - this._scrollContainer.current.getBoundingClientRect().left;
+
+            const unit = this._scrollContainer.current.clientWidth / this.props.animationLimit;
+            const priorFirstFrame = this.state.start !== 0 ? this.state.start * unit : 0;
+            const mouseMoved = moving - priorFirstFrame;
+
+            let framesTo = 0;
+
+            if (Math.sign(mouseMoved) !== -1) {
+                framesTo = Math.round(mouseMoved / unit) + this.state.start;
+            } else {
+                framesTo = this.state.start !== 0 ? this.state.start - Math.round(Math.abs(mouseMoved) / unit) : 0;
+            }
+
+            if (!(framesTo >= this.state.end - 20)) {
+                let toleft =
+                    framesTo * unit + this._scrollContainer.current.getBoundingClientRect().left + this._marginScrollbar * 2;
+                if (this._scrollbarHandle.current) {
+                    this._scrollbarHandle.current.style.left = toleft + "px";
+                }
+                this.setState({
+                    start: framesTo,
+                    scrollWidth: this.calculateScrollWidth(framesTo, this.state.end),
+                    selectionLength: this.range(framesTo, this.state.end),
+                });
+            }
+        }
+    }
+
+    /**
+    * Returns array with the expected length between two numbers
+    */
+    range(start: number, end: number) {
+        return Array.from({ length: end - start }, (_, i) => start + i * 1);
+    }
+
+    getKeyframe(frame: number) {
+        if (this.props.keyframes) {
+            return this.props.keyframes.find((x) => x.frame === frame);
+        } else {
+            return false;
+        }
+    }
+
+    getCurrentFrame(frame: number) {
+        if (this.props.currentFrame === frame) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    dragDomFalse = () => false;
 
     render() {
         return (
             <>
                 <div className="timeline">
-                    <div ref={this._scrollable} className="display-line" >
-                        <svg viewBox="0 0 2010 100" style={{ width: 2000 }} onMouseMove={(e) => this.drag(e)}
-                            onTouchMove={(e) => this.drag(e)}
-                            onTouchStart={(e) => this.dragStart(e)}
-                            onTouchEnd={(e) => this.dragEnd(e)}
-                            onMouseDown={(e) => this.dragStart(e)}
-                            onMouseUp={(e) => this.dragEnd(e)}
-                            onMouseLeave={(e) => this.dragEnd(e)}>
+                    <Controls
+                        keyframes={this.props.keyframes}
+                        selected={this.props.selected}
+                        currentFrame={this.props.currentFrame}
+                        onCurrentFrameChange={this.props.onCurrentFrameChange}
+                        repositionCanvas={this.props.repositionCanvas}
+                        playPause={this.props.playPause}
+                        isPlaying={this.props.isPlaying}
+                        scrollable={this._scrollable}
+                    />
+                    <div className="timeline-wrapper">
+                        <div ref={this._scrollable} className="display-line" onClick={this.setCurrentFrame} tabIndex={50}>
+                            <svg
+                                style={{
+                                    width: "100%",
+                                    height: 40,
+                                    backgroundColor: "#222222",
+                                }}
+                                onMouseMove={this.drag}
+                                onMouseDown={this.dragStart}
+                                onMouseUp={this.dragEnd}
+                                onMouseLeave={this.dragEnd}
+                            >
+                                {this.state.selectionLength.map((frame, i) => {
+                                    return (
+                                        <svg key={`tl_${frame}`}>
+                                            {
+                                                <>
+                                                    {frame % Math.round(this.state.selectionLength.length / 20) === 0 ? (
+                                                        <>
+                                                            <text
+                                                                x={(i * 100) / this.state.selectionLength.length + "%"}
+                                                                y="18"
+                                                                style={{ fontSize: 10, fill: "#555555" }}
+                                                            >
+                                                                {frame}
+                                                            </text>
+                                                            <line
+                                                                x1={(i * 100) / this.state.selectionLength.length + "%"}
+                                                                y1="22"
+                                                                x2={(i * 100) / this.state.selectionLength.length + "%"}
+                                                                y2="40"
+                                                                style={{ stroke: "#555555", strokeWidth: 0.5 }}
+                                                            />
+                                                        </>
+                                                    ) : null}
+                                                    {this.getCurrentFrame(frame) ? (
+                                                        <svg
+                                                            x={
+                                                                this._scrollable.current
+                                                                    ? this._scrollable.current.clientWidth /
+                                                                      this.state.selectionLength.length /
+                                                                      2
+                                                                    : 1
+                                                            }
+                                                        >
+                                                            <line
+                                                                x1={(i * 100) / this.state.selectionLength.length + "%"}
+                                                                y1="0"
+                                                                x2={(i * 100) / this.state.selectionLength.length + "%"}
+                                                                y2="40"
+                                                                style={{
+                                                                    stroke: "rgba(18, 80, 107, 0.26)",
+                                                                    strokeWidth: this._scrollable.current
+                                                                        ? this._scrollable.current.clientWidth /
+                                                                          this.state.selectionLength.length
+                                                                        : 1,
+                                                                }}
+                                                            />
+                                                        </svg>
+                                                    ) : null}
 
-                            <line x1={this.props.currentFrame * 10} y1="10" x2={this.props.currentFrame * 10} y2="20" style={{ stroke: '#12506b', strokeWidth: 6 }} />
-                            {
-                                this.props.keyframes && this.props.keyframes.map((kf, i) => {
+                                                    {this.getKeyframe(frame) ? (
+                                                        <svg key={`kf_${i}`} tabIndex={i + 40}>
+                                                            <line
+                                                                id={`kf_${i.toString()}`}
+                                                                x1={(i * 100) / this.state.selectionLength.length + "%"}
+                                                                y1="0"
+                                                                x2={(i * 100) / this.state.selectionLength.length + "%"}
+                                                                y2="40"
+                                                                style={{ stroke: "#ffc017", strokeWidth: 1 }}
+                                                            />
+                                                        </svg>
+                                                    ) : null}
+                                                </>
+                                            }
+                                        </svg>
+                                    );
+                                })}
+                            </svg>
+                        </div>
 
-                                    return <svg key={`kf_${i}`} style={{ cursor: 'pointer' }} tabIndex={i + 40} >
-                                        <line id={`kf_${i.toString()}`} x1={kf.frame * 10} y1="10" x2={kf.frame * 10} y2="20" style={{ stroke: 'red', strokeWidth: 6 }} />
-                                    </svg>
-                                })
-                            }
-                            {
-                                this._frames.map((frame, i) => {
+                        <div
+                            className="timeline-scroll-handle"
+                            onMouseMove={this.scrollDrag}
+                            onMouseDown={this.scrollDragStart}
+                            onMouseUp={this.scrollDragEnd}
+                            onMouseLeave={this.scrollDragEnd}
+                            onDragStart={this.dragDomFalse}
+                        >
+                            <div className="scroll-handle" ref={this._scrollContainer} tabIndex={60}>
+                                <div className="handle" ref={this._scrollbarHandle} style={{ width: this.state.scrollWidth }}>
+                                    <div className="left-grabber">
+                                        <div className="left-draggable">
+                                            <div className="grabber"></div>
+                                            <div className="grabber"></div>
+                                            <div className="grabber"></div>
+                                        </div>
+                                        <div className="text">{this.state.start}</div>
+                                    </div>
+                                    <div className="scrollbar"></div>
 
-                                    return <svg key={`tl_${i}`}>
-                                        {i % 10 === 0 ? <text x={(i * 10) - 3} y="8" style={{ fontSize: 10 }}>{i}</text> : null}
-                                        <line x1={i * 10} y1="10" x2={i * 10} y2="20" style={{ stroke: 'black', strokeWidth: 0.5 }} />
-                                    </svg>
-                                })
-                            }
-                        </svg>
-                    </div>
-                    <div className="controls">
+                                    <div className="right-grabber">
+                                        <div className="text">{this.state.end}</div>
+                                        <div className="right-draggable">
+                                            <div className="grabber"></div>
+                                            <div className="grabber"></div>
+                                            <div className="grabber"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="input-frame">
-                            <input type="number" value={this.props.currentFrame} onChange={(e) => this.handleInputChange(e)}></input>
-                        </div>
-                        <div className="previous-frame button" onClick={(e) => this.previousFrame(e)}>
-                            <FontAwesomeIcon icon={faCaretLeft} />
-                        </div>
-                        <div className="previous-key-frame button" onClick={(e) => this.previousKeyframe(e)}>
-                            <FontAwesomeIcon icon={faStepBackward} />
-                        </div>
-                        <div className="previous-key-frame button" onClick={(e) => this.playBackwards(e)}>
-                            <FontAwesomeIcon icon={faPlay} style={{ transform: 'rotate(180deg)' }} />
-                        </div>
-                        <div className="previous-key-frame button" onClick={(e) => this.pause(e)}>
-                            <FontAwesomeIcon icon={faPause} />
-                        </div>
-                        <div className="previous-key-frame button" onClick={(e) => this.play(e)}>
-                            <FontAwesomeIcon icon={faPlay} />
-                        </div>
-                        <div className="next-key-frame button" onClick={(e) => this.nextKeyframe(e)}>
-                            <FontAwesomeIcon icon={faStepForward} />
-                        </div>
-                        <div className="next-frame button" onClick={(e) => this.nextFrame(e)}>
-                            <FontAwesomeIcon icon={faCaretRight} />
+                            <input
+                                ref={this._inputAnimationLimit}
+                                type="number"
+                                value={this.state.limitValue}
+                                onChange={(e) => this.handleLimitChange(e)}
+                                onBlur={(e) => this.onInputBlur(e)}
+                            ></input>
                         </div>
                     </div>
                 </div>
             </>
-        )
+        );
     }
-} 
+}

@@ -16,6 +16,7 @@ import { IMaterialAnisotropicDefines, PBRAnisotropicConfiguration } from "./pbrA
 import { IMaterialBRDFDefines, PBRBRDFConfiguration } from "./pbrBRDFConfiguration";
 import { IMaterialSheenDefines, PBRSheenConfiguration } from "./pbrSheenConfiguration";
 import { IMaterialSubSurfaceDefines, PBRSubSurfaceConfiguration } from "./pbrSubSurfaceConfiguration";
+import { PrePassConfiguration } from "../prePassConfiguration";
 import { Color3, TmpColors } from '../../Maths/math.color';
 import { Scalar } from "../../Maths/math.scalar";
 
@@ -41,6 +42,8 @@ import "../../Shaders/pbr.vertex";
 
 import { EffectFallbacks } from '../effectFallbacks';
 import { IMaterialDetailMapDefines, DetailMapConfiguration } from '../material.detailMapConfiguration';
+
+declare type PrePassRenderer = import("../../Rendering/prePassRenderer").PrePassRenderer;
 
 const onCreatedEffectParameters = { effect: null as unknown as Effect, subMesh: null as unknown as Nullable<SubMesh> };
 
@@ -161,9 +164,25 @@ export class PBRMaterialDefines extends MaterialDefines
     public INSTANCES = false;
     public THIN_INSTANCES = false;
 
+    public PREPASS = false;
+    public PREPASS_IRRADIANCE = false;
+    public PREPASS_IRRADIANCE_INDEX = -1;
+    public PREPASS_ALBEDO = false;
+    public PREPASS_ALBEDO_INDEX = -1;
+    public PREPASS_DEPTHNORMAL = false;
+    public PREPASS_DEPTHNORMAL_INDEX = -1;
+    public PREPASS_POSITION = false;
+    public PREPASS_POSITION_INDEX = -1;
+    public PREPASS_VELOCITY = false;
+    public PREPASS_VELOCITY_INDEX = -1;
+    public PREPASS_REFLECTIVITY = false;
+    public PREPASS_REFLECTIVITY_INDEX = -1;
+    public SCENE_MRT_COUNT = 0;
+
     public NUM_BONE_INFLUENCERS = 0;
     public BonesPerMesh = 0;
     public BONETEXTURE = false;
+    public BONES_VELOCITY_ENABLED = false;
 
     public NONUNIFORMSCALING = false;
 
@@ -210,9 +229,14 @@ export class PBRMaterialDefines extends MaterialDefines
     public CLEARCOAT = false;
     public CLEARCOAT_DEFAULTIOR = false;
     public CLEARCOAT_TEXTURE = false;
+    public CLEARCOAT_TEXTURE_ROUGHNESS = false;
     public CLEARCOAT_TEXTUREDIRECTUV = 0;
+    public CLEARCOAT_TEXTURE_ROUGHNESSDIRECTUV = 0;
+    public CLEARCOAT_USE_ROUGHNESS_FROM_MAINTEXTURE = false;
+    public CLEARCOAT_TEXTURE_ROUGHNESS_IDENTICAL = false;
     public CLEARCOAT_BUMP = false;
     public CLEARCOAT_BUMPDIRECTUV = 0;
+    public CLEARCOAT_REMAP_F0 = true;
     public CLEARCOAT_TINT = false;
     public CLEARCOAT_TINT_TEXTURE = false;
     public CLEARCOAT_TINT_TEXTUREDIRECTUV = 0;
@@ -227,10 +251,14 @@ export class PBRMaterialDefines extends MaterialDefines
 
     public SHEEN = false;
     public SHEEN_TEXTURE = false;
+    public SHEEN_TEXTURE_ROUGHNESS = false;
     public SHEEN_TEXTUREDIRECTUV = 0;
+    public SHEEN_TEXTURE_ROUGHNESSDIRECTUV = 0;
     public SHEEN_LINKWITHALBEDO = false;
     public SHEEN_ROUGHNESS = false;
     public SHEEN_ALBEDOSCALING = false;
+    public SHEEN_USE_ROUGHNESS_FROM_MAINTEXTURE = false;
+    public SHEEN_TEXTURE_ROUGHNESS_IDENTICAL = false;
 
     public SUBSURFACE = false;
 
@@ -251,6 +279,7 @@ export class PBRMaterialDefines extends MaterialDefines
     public SS_ALBEDOFORREFRACTIONTINT = false;
 
     public SS_MASK_FROM_THICKNESS_TEXTURE = false;
+    public SS_MASK_FROM_THICKNESS_TEXTURE_GLTF = false;
 
     public UNLIT = false;
 
@@ -673,6 +702,13 @@ export abstract class PBRBaseMaterial extends PushMaterial {
     }
 
     /**
+     * Can this material render to several textures at once
+     */
+    public get canRenderToMRT() {
+        return true;
+    }
+
+    /**
      * Force normal to face away from face.
      */
     protected _forceNormalForward = false;
@@ -796,7 +832,12 @@ export abstract class PBRBaseMaterial extends PushMaterial {
     /**
      * Defines the SubSurface parameters for the material.
      */
-    public readonly subSurface = new PBRSubSurfaceConfiguration(this._markAllSubMeshesAsTexturesDirty.bind(this));
+    public readonly subSurface: PBRSubSurfaceConfiguration;
+
+    /**
+     * Defines additionnal PrePass parameters for the material.
+     */
+    public readonly prePassConfiguration: PrePassConfiguration;
 
     /**
      * Defines the detail map parameters for the material.
@@ -830,6 +871,8 @@ export abstract class PBRBaseMaterial extends PushMaterial {
         };
 
         this._environmentBRDFTexture = BRDFTextureTools.GetEnvironmentBRDFTexture(scene);
+        this.subSurface = new PBRSubSurfaceConfiguration(this._markAllSubMeshesAsTexturesDirty.bind(this), this._markScenePrePassDirty.bind(this), scene);
+        this.prePassConfiguration = new PrePassConfiguration();
     }
 
     /**
@@ -897,7 +940,7 @@ export abstract class PBRBaseMaterial extends PushMaterial {
             return false;
         }
 
-        return this._albedoTexture != null && this._albedoTexture.hasAlpha && (this._transparencyMode == null || this._transparencyMode === PBRBaseMaterial.PBRMATERIAL_ALPHATEST);
+        return this._hasAlphaChannel() && (this._transparencyMode == null || this._transparencyMode === PBRBaseMaterial.PBRMATERIAL_ALPHATEST);
     }
 
     /**
@@ -905,6 +948,13 @@ export abstract class PBRBaseMaterial extends PushMaterial {
      */
     protected _shouldUseAlphaFromAlbedoTexture(): boolean {
         return this._albedoTexture != null && this._albedoTexture.hasAlpha && this._useAlphaFromAlbedoTexture && this._transparencyMode !== PBRBaseMaterial.PBRMATERIAL_OPAQUE;
+    }
+
+    /**
+     * Specifies whether or not there is a usable alpha channel for transparency.
+     */
+    protected _hasAlphaChannel(): boolean {
+        return (this._albedoTexture != null && this._albedoTexture.hasAlpha) || this._opacityTexture != null;
     }
 
     /**
@@ -1262,6 +1312,9 @@ export abstract class PBRBaseMaterial extends PushMaterial {
         PBRSheenConfiguration.AddUniforms(uniforms);
         PBRSheenConfiguration.AddSamplers(samplers);
 
+        PrePassConfiguration.AddUniforms(uniforms);
+        PrePassConfiguration.AddSamplers(uniforms);
+
         if (ImageProcessingConfiguration) {
             ImageProcessingConfiguration.PrepareUniforms(uniforms, defines);
             ImageProcessingConfiguration.PrepareSamplers(samplers, defines);
@@ -1293,6 +1346,7 @@ export abstract class PBRBaseMaterial extends PushMaterial {
             onError: onError,
             indexParameters: { maxSimultaneousLights: this._maxSimultaneousLights, maxSimultaneousMorphTargets: defines.NUM_MORPH_INFLUENCERS },
             processFinalCode: csnrOptions.processFinalCode,
+            multiTarget: defines.PREPASS
         }, engine);
     }
 
@@ -1306,6 +1360,9 @@ export abstract class PBRBaseMaterial extends PushMaterial {
 
         // Multiview
         MaterialHelper.PrepareDefinesForMultiview(scene, defines);
+
+        // PrePass
+        MaterialHelper.PrepareDefinesForPrePass(scene, defines, this.canRenderToMRT);
 
         // Textures
         defines.METALLICWORKFLOW = this.isMetallicWorkflow();
@@ -1724,6 +1781,9 @@ export abstract class PBRBaseMaterial extends PushMaterial {
             this.bindOnlyWorldMatrix(world);
         }
 
+        // PrePass
+        this.prePassConfiguration.bindForSubMesh(this._activeEffect, scene, mesh, world, this.isFrozen);
+
         // Normal Matrix
         if (defines.OBJECTSPACE_NORMALMAP) {
             world.toNormalMatrix(this._normalMatrix);
@@ -1733,7 +1793,7 @@ export abstract class PBRBaseMaterial extends PushMaterial {
         let mustRebind = this._mustRebind(scene, effect, mesh.visibility);
 
         // Bones
-        MaterialHelper.BindBonesParameters(mesh, this._activeEffect);
+        MaterialHelper.BindBonesParameters(mesh, this._activeEffect, this.prePassConfiguration);
 
         let reflectionTexture: Nullable<BaseTexture> = null;
         let ubo = this._uniformBuffer;
@@ -1976,9 +2036,9 @@ export abstract class PBRBaseMaterial extends PushMaterial {
 
             this.detailMap.bindForSubMesh(ubo, scene, this.isFrozen);
             this.subSurface.bindForSubMesh(ubo, scene, engine, this.isFrozen, defines.LODBASEDMICROSFURACE, this.realTimeFiltering);
-            this.clearCoat.bindForSubMesh(ubo, scene, engine, this._disableBumpMap, this.isFrozen, this._invertNormalMapX, this._invertNormalMapY);
+            this.clearCoat.bindForSubMesh(ubo, scene, engine, this._disableBumpMap, this.isFrozen, this._invertNormalMapX, this._invertNormalMapY, subMesh);
             this.anisotropy.bindForSubMesh(ubo, scene, this.isFrozen);
-            this.sheen.bindForSubMesh(ubo, scene, this.isFrozen);
+            this.sheen.bindForSubMesh(ubo, scene, this.isFrozen, subMesh);
 
             // Clip plane
             MaterialHelper.BindClipPlane(this._activeEffect, scene);
@@ -2207,6 +2267,23 @@ export abstract class PBRBaseMaterial extends PushMaterial {
             this.clearCoat.hasTexture(texture) ||
             this.sheen.hasTexture(texture) ||
             this.anisotropy.hasTexture(texture);
+    }
+
+    /**
+     * Sets the required values to the prepass renderer.
+     * @param prePassRenderer defines the prepass renderer to setup
+     */
+    public setPrePassRenderer(prePassRenderer: PrePassRenderer): boolean {
+        if (this.subSurface.isScatteringEnabled) {
+            let subSurfaceConfiguration = this.getScene().enableSubSurfaceForPrePass();
+            if (subSurfaceConfiguration) {
+                subSurfaceConfiguration.enabled = true;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     /**

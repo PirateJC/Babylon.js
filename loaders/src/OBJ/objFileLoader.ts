@@ -4,12 +4,9 @@ import { Color4 } from 'babylonjs/Maths/math.color';
 import { Tools } from "babylonjs/Misc/tools";
 import { VertexData } from "babylonjs/Meshes/mesh.vertexData";
 import { Geometry } from "babylonjs/Meshes/geometry";
-import { AnimationGroup } from "babylonjs/Animations/animationGroup";
-import { Skeleton } from "babylonjs/Bones/skeleton";
-import { IParticleSystem } from "babylonjs/Particles/IParticleSystem";
 import { AbstractMesh } from "babylonjs/Meshes/abstractMesh";
 import { Mesh } from "babylonjs/Meshes/mesh";
-import { SceneLoader, ISceneLoaderPluginAsync, ISceneLoaderProgressEvent, ISceneLoaderPluginFactory, ISceneLoaderPlugin } from "babylonjs/Loading/sceneLoader";
+import { SceneLoader, ISceneLoaderPluginAsync, ISceneLoaderProgressEvent, ISceneLoaderPluginFactory, ISceneLoaderPlugin, ISceneLoaderAsyncResult } from "babylonjs/Loading/sceneLoader";
 
 import { AssetContainer } from "babylonjs/assetContainer";
 import { Scene } from "babylonjs/scene";
@@ -131,13 +128,13 @@ export class OBJFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
     /** @hidden */
     public smooth = /^s /;
     /** @hidden */
-    public vertexPattern = /v( +[\d|\.|\+|\-|e|E]+){3,7}/;
+    public vertexPattern = /v(\s+[\d|\.|\+|\-|e|E]+){3,7}/;
     // vn float float float
     /** @hidden */
-    public normalPattern = /vn( +[\d|\.|\+|\-|e|E]+)( +[\d|\.|\+|\-|e|E]+)( +[\d|\.|\+|\-|e|E]+)/;
+    public normalPattern = /vn(\s+[\d|\.|\+|\-|e|E]+)( +[\d|\.|\+|\-|e|E]+)( +[\d|\.|\+|\-|e|E]+)/;
     // vt float float
     /** @hidden */
-    public uvPattern = /vt( +[\d|\.|\+|\-|e|E]+)( +[\d|\.|\+|\-|e|E]+)/;
+    public uvPattern = /vt(\s+[\d|\.|\+|\-|e|E]+)( +[\d|\.|\+|\-|e|E]+)/;
     // f vertex vertex vertex ...
     /** @hidden */
     public facePattern1 = /f\s+(([\d]{1,}[\s]?){3,})+/;
@@ -236,14 +233,17 @@ export class OBJFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
      * @param fileName Defines the name of the file to load
      * @returns a promise containg the loaded meshes, particles, skeletons and animations
      */
-    public importMeshAsync(meshesNames: any, scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<{ meshes: AbstractMesh[], particleSystems: IParticleSystem[], skeletons: Skeleton[], animationGroups: AnimationGroup[] }> {
+    public importMeshAsync(meshesNames: any, scene: Scene, data: any, rootUrl: string, onProgress?: (event: ISceneLoaderProgressEvent) => void, fileName?: string): Promise<ISceneLoaderAsyncResult> {
         //get the meshes from OBJ file
         return this._parseSolid(meshesNames, scene, data, rootUrl).then((meshes) => {
             return {
-                meshes,
+                meshes: meshes,
                 particleSystems: [],
                 skeletons: [],
-                animationGroups: []
+                animationGroups: [],
+                transformNodes: [],
+                geometries: [],
+                lights: []
             };
         });
     }
@@ -449,10 +449,10 @@ export class OBJFileLoader implements ISceneLoaderPluginAsync, ISceneLoaderPlugi
                 unwrappedPositionsForBabylon.push(wrappedPositionForBabylon[l].x, wrappedPositionForBabylon[l].y, wrappedPositionForBabylon[l].z);
                 unwrappedNormalsForBabylon.push(wrappedNormalsForBabylon[l].x, wrappedNormalsForBabylon[l].y, wrappedNormalsForBabylon[l].z);
                 unwrappedUVForBabylon.push(wrappedUvsForBabylon[l].x, wrappedUvsForBabylon[l].y); //z is an optional value not supported by BABYLON
-            }
-            if (this._meshLoadOptions.ImportVertexColors === true) {
-                //Push the r, g, b, a values of each element in the unwrapped array
-                unwrappedColorsForBabylon.push(wrappedColorsForBabylon[l].r, wrappedColorsForBabylon[l].g, wrappedColorsForBabylon[l].b, wrappedColorsForBabylon[l].a);
+                if (this._meshLoadOptions.ImportVertexColors === true) {
+                    //Push the r, g, b, a values of each element in the unwrapped array
+                    unwrappedColorsForBabylon.push(wrappedColorsForBabylon[l].r, wrappedColorsForBabylon[l].g, wrappedColorsForBabylon[l].b, wrappedColorsForBabylon[l].a);
+                }
             }
             // Reset arrays for the next new meshes
             wrappedPositionForBabylon = [];

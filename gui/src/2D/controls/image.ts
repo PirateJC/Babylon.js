@@ -39,6 +39,11 @@ export class Image extends Control {
 
     private _detectPointerOnOpaqueOnly: boolean;
 
+    private _imageDataCache: {
+                data: Uint8ClampedArray | null;
+                key: string;
+            } = { data: null, key: "" };
+
     /**
      * Observable notified when the content is loaded
      */
@@ -239,7 +244,7 @@ export class Image extends Control {
 
     /**
      * Gets or sets a boolean indicating if the image can force its container to adapt its size
-     * @see http://doc.babylonjs.com/how_to/gui#image
+     * @see https://doc.babylonjs.com/how_to/gui#image
      */
     public get autoScale(): boolean {
         return this._autoScale;
@@ -301,6 +306,8 @@ export class Image extends Control {
 
         this._handleRotationForSVGImage(this, rotatedImage, n);
 
+        this._imageDataCache.data = null;
+
         return rotatedImage;
     }
 
@@ -361,6 +368,7 @@ export class Image extends Control {
     public set domImage(value: HTMLImageElement) {
         this._domImage = value;
         this._loaded = false;
+        this._imageDataCache.data = null;
 
         if (this._domImage.width) {
             this._onImageLoaded();
@@ -376,6 +384,7 @@ export class Image extends Control {
     }
 
     private _onImageLoaded(): void {
+        this._imageDataCache.data = null;
         this._imageWidth = this._domImage.width;
         this._imageHeight = this._domImage.height;
         this._loaded = true;
@@ -453,6 +462,7 @@ export class Image extends Control {
 
         this._loaded = false;
         this._source = value;
+        this._imageDataCache.data = null;
 
         if (value) {
             value = this._svgCheck(value);
@@ -560,7 +570,7 @@ export class Image extends Control {
 
     /**
      * Gets or sets the cell width to use when animation sheet is enabled
-     * @see http://doc.babylonjs.com/how_to/gui#image
+     * @see https://doc.babylonjs.com/how_to/gui#image
      */
     get cellWidth(): number {
         return this._cellWidth;
@@ -576,7 +586,7 @@ export class Image extends Control {
 
     /**
      * Gets or sets the cell height to use when animation sheet is enabled
-     * @see http://doc.babylonjs.com/how_to/gui#image
+     * @see https://doc.babylonjs.com/how_to/gui#image
      */
     get cellHeight(): number {
         return this._cellHeight;
@@ -592,7 +602,7 @@ export class Image extends Control {
 
     /**
      * Gets or sets the cell id to use (this will turn on the animation sheet mode)
-     * @see http://doc.babylonjs.com/how_to/gui#image
+     * @see https://doc.babylonjs.com/how_to/gui#image
      */
     get cellId(): number {
         return this._cellId;
@@ -632,16 +642,24 @@ export class Image extends Control {
             return true;
         }
 
-        const canvas = this._workingCanvas;
-        const context = canvas.getContext("2d")!;
         const width = this._currentMeasure.width | 0;
         const height = this._currentMeasure.height | 0;
-        const imageData = context.getImageData(0, 0, width, height).data;
+        const key = width + "_" + height;
+
+        let imageData = this._imageDataCache.data;
+
+        if (!imageData || this._imageDataCache.key !== key) {
+            const canvas = this._workingCanvas;
+            const context = canvas.getContext("2d")!;
+
+            this._imageDataCache.data = imageData = context.getImageData(0, 0, width, height).data;
+            this._imageDataCache.key = key;
+        }
 
         x = (x - this._currentMeasure.left) | 0;
         y = (y - this._currentMeasure.top) | 0;
 
-        const pickedPixel = imageData[(x + y * this._currentMeasure.width) * 4 + 3];
+        const pickedPixel = imageData[(x + y * width) * 4 + 3];
 
         return pickedPixel > 0;
     }

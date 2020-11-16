@@ -18,7 +18,7 @@ Node.AddNodeConstructor("ArcFollowCamera", (name, scene) => {
 /**
  * A follow camera takes a mesh as a target and follows it as it moves. Both a free camera version followCamera and
  * an arc rotate version arcFollowCamera are available.
- * @see http://doc.babylonjs.com/features/cameras#follow-camera
+ * @see https://doc.babylonjs.com/features/cameras#follow-camera
  */
 export class FollowCamera extends TargetCamera {
     /**
@@ -109,7 +109,7 @@ export class FollowCamera extends TargetCamera {
 
     /**
      * Instantiates the follow camera.
-     * @see http://doc.babylonjs.com/features/cameras#follow-camera
+     * @see https://doc.babylonjs.com/features/cameras#follow-camera
      * @param name Define the name of the camera in the scene
      * @param position Define the position of the camera
      * @param scene Define the scene the camera belong to
@@ -167,24 +167,34 @@ export class FollowCamera extends TargetCamera {
     }
 
     /**
-     * Attached controls to the current camera.
-     * @param element Defines the element the controls should be listened from
+     * Attach the input controls to a specific dom element to get the input from.
      * @param noPreventDefault Defines whether event caught by the controls should call preventdefault() (https://developer.mozilla.org/en-US/docs/Web/API/Event/preventDefault)
      */
-    public attachControl(element: HTMLElement, noPreventDefault?: boolean): void {
-        this.inputs.attachElement(element, noPreventDefault);
+    public attachControl(noPreventDefault?: boolean): void;
+    /**
+     * Attached controls to the current camera.
+     * @param ignored defines an ignored parameter kept for backward compatibility. If you want to define the source input element, you can set engine.inputElement before calling camera.attachControl
+     * @param noPreventDefault Defines whether event caught by the controls should call preventdefault() (https://developer.mozilla.org/en-US/docs/Web/API/Event/preventDefault)
+     */
+    public attachControl(ignored: any, noPreventDefault?: boolean): void {
+        noPreventDefault = Tools.BackCompatCameraNoPreventDefault(arguments);
+        this.inputs.attachElement(noPreventDefault);
 
         this._reset = () => {
         };
     }
 
     /**
-     * Detach the current controls from the camera.
-     * The camera will stop reacting to inputs.
-     * @param element Defines the element to stop listening the inputs from
+     * Detach the current controls from the specified dom element.
      */
-    public detachControl(element: HTMLElement): void {
-        this.inputs.detachElement(element);
+    public detachControl(): void;
+
+    /**
+     * Detach the current controls from the specified dom element.
+     * @param ignored defines an ignored parameter kept for backward compatibility. If you want to define the source input element, you can set engine.inputElement before calling camera.attachControl
+     */
+    public detachControl(ignored?: any): void {
+        this.inputs.detachElement();
 
         if (this._reset) {
             this._reset();
@@ -240,15 +250,18 @@ export class FollowCamera extends TargetCamera {
 /**
  * Arc Rotate version of the follow camera.
  * It still follows a Defined mesh but in an Arc Rotate Camera fashion.
- * @see http://doc.babylonjs.com/features/cameras#follow-camera
+ * @see https://doc.babylonjs.com/features/cameras#follow-camera
  */
 export class ArcFollowCamera extends TargetCamera {
 
     private _cartesianCoordinates: Vector3 = Vector3.Zero();
 
+        /** Define the camera target (the mesh it should follow) */
+    private _meshTarget: Nullable<AbstractMesh>;
+
     /**
      * Instantiates a new ArcFollowCamera
-     * @see http://doc.babylonjs.com/features/cameras#follow-camera
+     * @see https://doc.babylonjs.com/features/cameras#follow-camera
      * @param name Define the name of the camera
      * @param alpha Define the rotation angle of the camera around the logitudinal axis
      * @param beta Define the rotation angle of the camera around the elevation axis
@@ -264,21 +277,22 @@ export class ArcFollowCamera extends TargetCamera {
         /** The radius of the camera from its target */
         public radius: number,
         /** Define the camera target (the mesh it should follow) */
-        public target: Nullable<AbstractMesh>,
+        target: Nullable<AbstractMesh>,
         scene: Scene) {
         super(name, Vector3.Zero(), scene);
+        this._meshTarget = target;
         this._follow();
     }
 
     private _follow(): void {
-        if (!this.target) {
+        if (!this._meshTarget) {
             return;
         }
         this._cartesianCoordinates.x = this.radius * Math.cos(this.alpha) * Math.cos(this.beta);
         this._cartesianCoordinates.y = this.radius * Math.sin(this.beta);
         this._cartesianCoordinates.z = this.radius * Math.sin(this.alpha) * Math.cos(this.beta);
 
-        var targetPosition = this.target.getAbsolutePosition();
+        var targetPosition = this._meshTarget.getAbsolutePosition();
         this.position = targetPosition.add(this._cartesianCoordinates);
         this.setTarget(targetPosition);
     }

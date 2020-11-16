@@ -282,9 +282,13 @@ export class Constants {
      */
     public static readonly MATERIAL_MiscDirtyFlag = 16;
     /**
+     * The dirty prepass flag value
+     */
+    public static readonly MATERIAL_PrePassDirtyFlag = 32;
+    /**
      * The all dirty flag value
      */
-    public static readonly MATERIAL_AllDirtyFlag = 31;
+    public static readonly MATERIAL_AllDirtyFlag = 63;
 
     /**
      * Returns the triangle fill mode
@@ -335,88 +339,88 @@ export class Constants {
 
     /**
      * Nothing
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_NothingTrigger = 0;
     /**
      * On pick
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnPickTrigger = 1;
     /**
      * On left pick
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnLeftPickTrigger = 2;
     /**
      * On right pick
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnRightPickTrigger = 3;
     /**
      * On center pick
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnCenterPickTrigger = 4;
     /**
      * On pick down
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnPickDownTrigger = 5;
     /**
      * On double pick
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnDoublePickTrigger = 6;
     /**
      * On pick up
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnPickUpTrigger = 7;
     /**
      * On pick out.
      * This trigger will only be raised if you also declared a OnPickDown
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnPickOutTrigger = 16;
     /**
      * On long press
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnLongPressTrigger = 8;
     /**
      * On pointer over
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnPointerOverTrigger = 9;
     /**
      * On pointer out
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnPointerOutTrigger = 10;
     /**
      * On every frame
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnEveryFrameTrigger = 11;
     /**
      * On intersection enter
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnIntersectionEnterTrigger = 12;
     /**
      * On intersection exit
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnIntersectionExitTrigger = 13;
     /**
      * On key down
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnKeyDownTrigger = 14;
     /**
      * On key up
-     * @see http://doc.babylonjs.com/how_to/how_to_use_actions#triggers
+     * @see https://doc.babylonjs.com/how_to/how_to_use_actions#triggers
      */
     public static readonly ACTION_OnKeyUpTrigger = 15;
 
@@ -484,4 +488,40 @@ export class Constants {
      * Detailled logging while loading
      */
     public static readonly SCENELOADER_DETAILED_LOGGING = 3;
+
+    /**
+     * Constant used to retrieve the irradiance texture index in the textures array in the prepass
+     * using getIndex(Constants.PREPASS_IRRADIANCE_TEXTURE_TYPE)
+     */
+    public static readonly PREPASS_IRRADIANCE_TEXTURE_TYPE = 0;
+    /**
+     * Constant used to retrieve the position texture index in the textures array in the prepass
+     * using getIndex(Constants.PREPASS_POSITION_TEXTURE_INDEX)
+     */
+    public static readonly PREPASS_POSITION_TEXTURE_TYPE = 1;
+    /**
+     * Constant used to retrieve the velocity texture index in the textures array in the prepass
+     * using getIndex(Constants.PREPASS_VELOCITY_TEXTURE_INDEX)
+     */
+    public static readonly PREPASS_VELOCITY_TEXTURE_TYPE = 2;
+    /**
+     * Constant used to retrieve the reflectivity texture index in the textures array in the prepass
+     * using the getIndex(Constants.PREPASS_REFLECTIVITY_TEXTURE_TYPE)
+     */
+    public static readonly PREPASS_REFLECTIVITY_TEXTURE_TYPE = 3;
+    /**
+     * Constant used to retrieve the lit color texture index in the textures array in the prepass
+     * using the getIndex(Constants.PREPASS_COLOR_TEXTURE_TYPE)
+     */
+    public static readonly PREPASS_COLOR_TEXTURE_TYPE = 4;
+    /**
+     * Constant used to retrieve depth + normal index in the textures array in the prepass
+     * using the getIndex(Constants.PREPASS_DEPTHNORMAL_TEXTURE_TYPE)
+     */
+    public static readonly PREPASS_DEPTHNORMAL_TEXTURE_TYPE = 5;
+    /**
+     * Constant used to retrieve albedo index in the textures array in the prepass
+     * using the getIndex(Constants.PREPASS_ALBEDO_TEXTURE_TYPE)
+     */
+    public static readonly PREPASS_ALBEDO_TEXTURE_TYPE = 6;
 }

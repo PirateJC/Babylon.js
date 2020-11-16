@@ -126,15 +126,20 @@ void main()
 {
     #ifdef SSR_SUPPORTED
         // Intensity
-        vec3 albedo = texture2D(textureSampler, vUV).rgb;
+        vec4 albedoFull = texture2D(textureSampler, vUV);
+        vec3 albedo = albedoFull.rgb;
         float spec = texture2D(reflectivitySampler, vUV).r;
         if (spec == 0.0) {
-            gl_FragColor = vec4(albedo, 1.0);
+            gl_FragColor = albedoFull;
             return;
         }
         
         // Get coordinates of the pixel to pick according to the pixel's position and normal.
+        #ifdef PREPASS_LAYOUT
+        vec3 normal = (texture2D(normalSampler, vUV)).gba;
+        #else
         vec3 normal = (texture2D(normalSampler, vUV)).xyz;
+        #endif
         vec3 position = (view * texture2D(positionSampler, vUV)).xyz;
         vec3 reflected = normalize(reflect(normalize(position), normalize(normal)));
 
@@ -157,7 +162,7 @@ void main()
         float albedoMultiplier = 1.0 - reflectionMultiplier;
         vec3 SSR = info.color * fresnel;
 
-        gl_FragColor = vec4((albedo * albedoMultiplier) + (SSR * reflectionMultiplier), 1.0);
+        gl_FragColor = vec4((albedo * albedoMultiplier) + (SSR * reflectionMultiplier), albedoFull.a);
     #else
         gl_FragColor = texture2D(textureSampler, vUV);
     #endif

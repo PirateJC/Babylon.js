@@ -6,6 +6,7 @@ import { ArrayTools } from '../Misc/arrayTools';
 import { IPlaneLike } from './math.like';
 import { _TypeStore } from '../Misc/typeStore';
 import { Plane } from './math.plane';
+import { PerformanceConfigurator } from '../Engines/performanceConfigurator';
 
 /**
  * Class representing a vector containing 2 coordinates
@@ -28,7 +29,7 @@ export class Vector2 {
      * @returns a string with the Vector2 coordinates
      */
     public toString(): string {
-        return "{X: " + this.x + " Y:" + this.y + "}";
+        return "{X: " + this.x + " Y: " + this.y + "}";
     }
 
     /**
@@ -60,6 +61,17 @@ export class Vector2 {
     public toArray(array: FloatArray, index: number = 0): Vector2 {
         array[index] = this.x;
         array[index + 1] = this.y;
+        return this;
+    }
+
+    /**
+     * Update the current vector from an array
+     * @param array defines the destination array
+     * @param index defines the offset in the destination array
+     * @returns the current Vector3
+     */
+    public fromArray(array: FloatArray, index: number = 0): Vector2 {
+        Vector2.FromArrayToRef(array, index, this);
         return this;
     }
 
@@ -639,9 +651,18 @@ export class Vector2 {
      * @returns a new Vector2
      */
     public static Center(value1: DeepImmutable<Vector2>, value2: DeepImmutable<Vector2>): Vector2 {
-        var center = value1.add(value2);
-        center.scaleInPlace(0.5);
-        return center;
+        return Vector2.CenterToRef(value1, value2, Vector2.Zero());
+    }
+
+    /**
+     * Gets the center of the vectors "value1" and "value2" and stores the result in the vector "ref"
+     * @param value1 defines first vector
+     * @param value2 defines second vector
+     * @param ref defines third vector
+     * @returns ref
+     */
+    public static CenterToRef(value1: DeepImmutable<Vector2>, value2: DeepImmutable<Vector2>, ref: DeepImmutable<Vector2>): Vector2 {
+        return ref.copyFromFloats((value1.x + value2.x) / 2, (value1.y + value2.y) / 2);
     }
 
     /**
@@ -780,6 +801,17 @@ export class Vector3 {
         array[index] = this._x;
         array[index + 1] = this._y;
         array[index + 2] = this._z;
+        return this;
+    }
+
+    /**
+     * Update the current vector from an array
+     * @param array defines the destination array
+     * @param index defines the offset in the destination array
+     * @returns the current Vector3
+     */
+    public fromArray(array: FloatArray, index: number = 0): Vector3 {
+        Vector3.FromArrayToRef(array, index, this);
         return this;
     }
 
@@ -1814,6 +1846,21 @@ export class Vector3 {
      * @returns the new Vector3
      */
     public static Project(vector: DeepImmutable<Vector3>, world: DeepImmutable<Matrix>, transform: DeepImmutable<Matrix>, viewport: DeepImmutable<Viewport>): Vector3 {
+        const result = new Vector3();
+        Vector3.ProjectToRef(vector, world, transform, viewport, result);
+        return result;
+    }
+
+    /**
+     * Project a Vector3 onto screen space to reference
+     * @param vector defines the Vector3 to project
+     * @param world defines the world matrix to use
+     * @param transform defines the transform (view x projection) matrix to use
+     * @param viewport defines the screen viewport to use
+     * @param result the vector in which the screen space will be stored
+     * @returns the new Vector3
+     */
+    public static ProjectToRef(vector: DeepImmutable<Vector3>, world: DeepImmutable<Matrix>, transform: DeepImmutable<Matrix>, viewport: DeepImmutable<Viewport>, result: DeepImmutable<Vector3>): Vector3 {
         var cw = viewport.width;
         var ch = viewport.height;
         var cx = viewport.x;
@@ -1831,7 +1878,8 @@ export class Vector3 {
         world.multiplyToRef(transform, matrix);
         matrix.multiplyToRef(viewportMatrix, matrix);
 
-        return Vector3.TransformCoordinates(vector, matrix);
+        Vector3.TransformCoordinatesToRef(vector, matrix, result);
+        return result;
     }
 
     /** @hidden */
@@ -1975,9 +2023,18 @@ export class Vector3 {
      * @returns the new Vector3
      */
     public static Center(value1: DeepImmutable<Vector3>, value2: DeepImmutable<Vector3>): Vector3 {
-        var center = value1.add(value2);
-        center.scaleInPlace(0.5);
-        return center;
+        return Vector3.CenterToRef(value1, value2, Vector3.Zero());
+    }
+
+    /**
+     * Gets the center of the vectors "value1" and "value2" and stores the result in the vector "ref"
+     * @param value1 defines first vector
+     * @param value2 defines second vector
+     * @param ref defines third vector
+     * @returns ref
+     */
+    public static CenterToRef(value1: DeepImmutable<Vector3>, value2: DeepImmutable<Vector3>, ref: DeepImmutable<Vector3>): Vector3 {
+        return ref.copyFromFloats((value1._x + value2._x) / 2, (value1._y + value2._y) / 2, (value1._z + value2._z) / 2);
     }
 
     /**
@@ -2087,6 +2144,17 @@ export class Vector4 {
         array[index + 1] = this.y;
         array[index + 2] = this.z;
         array[index + 3] = this.w;
+        return this;
+    }
+
+    /**
+     * Update the current vector from an array
+     * @param array defines the destination array
+     * @param index defines the offset in the destination array
+     * @returns the current Vector3
+     */
+    public fromArray(array: FloatArray, index: number = 0): Vector4 {
+        Vector4.FromArrayToRef(array, index, this);
         return this;
     }
 
@@ -2654,9 +2722,18 @@ export class Vector4 {
      * @return the center between the two vectors
      */
     public static Center(value1: DeepImmutable<Vector4>, value2: DeepImmutable<Vector4>): Vector4 {
-        var center = value1.add(value2);
-        center.scaleInPlace(0.5);
-        return center;
+        return Vector4.CenterToRef(value1, value2, Vector4.Zero());
+    }
+
+    /**
+     * Gets the center of the vectors "value1" and "value2" and stores the result in the vector "ref"
+     * @param value1 defines first vector
+     * @param value2 defines second vector
+     * @param ref defines third vector
+     * @returns ref
+     */
+    public static CenterToRef(value1: DeepImmutable<Vector4>, value2: DeepImmutable<Vector4>, ref: DeepImmutable<Vector4>): Vector4 {
+        return ref.copyFromFloats((value1.x + value2.x) / 2, (value1.y + value2.y) / 2, (value1.z + value2.z) / 2, (value1.w + value2.w) / 2);
     }
 
     /**
@@ -2722,7 +2799,7 @@ export class Vector4 {
 /**
  * Class used to store quaternion data
  * @see https://en.wikipedia.org/wiki/Quaternion
- * @see http://doc.babylonjs.com/features/position,_rotation,_scaling
+ * @see https://doc.babylonjs.com/features/position,_rotation,_scaling
  */
 export class Quaternion {
     /** @hidden */
@@ -3079,7 +3156,7 @@ export class Quaternion {
 
     /**
      * Returns a new Vector3 set with the Euler angles translated from the current quaternion
-     * @param order is a reserved parameter and is ignore for now
+     * @param order is a reserved parameter and is ignored for now
      * @returns a new Vector3 containing the Euler angles
      */
     public toEulerAngles(order = "YZX"): Vector3 {
@@ -3091,7 +3168,6 @@ export class Quaternion {
     /**
      * Sets the given vector3 "result" with the Euler angles translated from the current quaternion
      * @param result defines the vector which will be filled with the Euler angles
-     * @param order is a reserved parameter and is ignore for now
      * @returns the current unchanged quaternion
      */
     public toEulerAnglesToRef(result: Vector3): Quaternion {
@@ -3552,6 +3628,14 @@ export class Quaternion {
  * Class used to store matrix data (4x4)
  */
 export class Matrix {
+
+    /**
+     * Gets the precision of matrix computations
+     */
+    public static get Use64Bits(): boolean {
+        return PerformanceConfigurator.MatrixUse64Bits;
+    }
+
     private static _updateFlagSeed = 0;
     private static _identityReadOnly = Matrix.Identity() as DeepImmutable<Matrix>;
 
@@ -3566,12 +3650,12 @@ export class Matrix {
      */
     public updateFlag: number = -1;
 
-    private readonly _m: Float32Array = new Float32Array(16);
+    private readonly _m: Float32Array | Array<number>;
 
     /**
      * Gets the internal data of the matrix
      */
-    public get m(): DeepImmutable<Float32Array> { return this._m; }
+    public get m(): DeepImmutable<Float32Array | Array<number>> { return this._m; }
 
     /** @hidden */
     public _markAsUpdated() {
@@ -3595,6 +3679,11 @@ export class Matrix {
      * Creates an empty matrix (filled with zeros)
      */
     public constructor() {
+        if (PerformanceConfigurator.MatrixTrackPrecisionChange) {
+            PerformanceConfigurator.MatrixTrackedMatrices!.push(this);
+        }
+
+        this._m = new PerformanceConfigurator.MatrixCurrentType(16);
         this._updateIdentityStatus(false);
     }
 
@@ -3681,17 +3770,17 @@ export class Matrix {
     // Methods
 
     /**
-     * Returns the matrix as a Float32Array
+     * Returns the matrix as a Float32Array or Array<number>
      * @returns the matrix underlying array
      */
-    public toArray(): DeepImmutable<Float32Array> {
+    public toArray(): DeepImmutable<Float32Array | Array<number>> {
         return this._m;
     }
     /**
-     * Returns the matrix as a Float32Array
+     * Returns the matrix as a Float32Array or Array<number>
     * @returns the matrix underlying array.
     */
-    public asArray(): DeepImmutable<Float32Array> {
+    public asArray(): DeepImmutable<Float32Array | Array<number>> {
         return this._m;
     }
 
@@ -3969,7 +4058,7 @@ export class Matrix {
      * @param offset defines the offset in the target array where to start storing values
      * @returns the current matrix
      */
-    public copyToArray(array: Float32Array, offset: number = 0): Matrix {
+    public copyToArray(array: Float32Array | Array<number>, offset: number = 0): Matrix {
         let source = this._m;
         array[offset] = source[0];
         array[offset + 1] = source[1];
@@ -4019,7 +4108,7 @@ export class Matrix {
      * @param offset defines the offset in the target array where to start storing values
      * @returns the current matrix
      */
-    public multiplyToArray(other: DeepImmutable<Matrix>, result: Float32Array, offset: number): Matrix {
+    public multiplyToArray(other: DeepImmutable<Matrix>, result: Float32Array | Array<number>, offset: number): Matrix {
         const m = this._m;
         const otherM = other.m;
         var tm0 = m[0], tm1 = m[1], tm2 = m[2], tm3 = m[3];
@@ -4382,7 +4471,7 @@ export class Matrix {
      * @param scale defines the scaling factor
      * @param result defines the target matrix
      */
-    public static FromFloat32ArrayToRefScaled(array: DeepImmutable<Float32Array>, offset: number, scale: number, result: Matrix) {
+    public static FromFloat32ArrayToRefScaled(array: DeepImmutable<Float32Array | Array<number>>, offset: number, scale: number, result: Matrix) {
         for (var index = 0; index < 16; index++) {
             result._m[index] = array[index + offset] * scale;
         }
@@ -4735,7 +4824,7 @@ export class Matrix {
      * Creates a rotation matrix
      * @param yaw defines the yaw angle in radians (Y axis)
      * @param pitch defines the pitch angle in radians (X axis)
-     * @param roll defines the roll angle in radians (X axis)
+     * @param roll defines the roll angle in radians (Z axis)
      * @returns the new rotation matrix
      */
     public static RotationYawPitchRoll(yaw: number, pitch: number, roll: number): Matrix {
@@ -4748,7 +4837,7 @@ export class Matrix {
      * Creates a rotation matrix and stores it in a given matrix
      * @param yaw defines the yaw angle in radians (Y axis)
      * @param pitch defines the pitch angle in radians (X axis)
-     * @param roll defines the roll angle in radians (X axis)
+     * @param roll defines the roll angle in radians (Z axis)
      * @param result defines the target matrix
      */
     public static RotationYawPitchRollToRef(yaw: number, pitch: number, roll: number, result: Matrix): void {
@@ -5378,22 +5467,24 @@ export class Matrix {
      * @param matrix defines the matrix to use
      * @returns a new Float32Array array with 4 elements : the 2x2 matrix extracted from the given matrix
      */
-    public static GetAsMatrix2x2(matrix: DeepImmutable<Matrix>): Float32Array {
+    public static GetAsMatrix2x2(matrix: DeepImmutable<Matrix>): Float32Array | Array<number> {
         const m = matrix.m;
-        return new Float32Array([m[0], m[1], m[4], m[5]]);
+        const arr = [m[0], m[1], m[4], m[5]];
+        return PerformanceConfigurator.MatrixUse64Bits ? arr : new Float32Array(arr);
     }
     /**
      * Extracts a 3x3 matrix from a given matrix and store the result in a Float32Array
      * @param matrix defines the matrix to use
      * @returns a new Float32Array array with 9 elements : the 3x3 matrix extracted from the given matrix
      */
-    public static GetAsMatrix3x3(matrix: DeepImmutable<Matrix>): Float32Array {
+    public static GetAsMatrix3x3(matrix: DeepImmutable<Matrix>): Float32Array | Array<number> {
         const m = matrix.m;
-        return new Float32Array([
+        const arr = [
             m[0], m[1], m[2],
             m[4], m[5], m[6],
             m[8], m[9], m[10]
-        ]);
+        ];
+        return PerformanceConfigurator.MatrixUse64Bits ? arr : new Float32Array(arr);
     }
 
     /**

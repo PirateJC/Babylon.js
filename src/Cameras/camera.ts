@@ -25,7 +25,7 @@ declare type Ray = import("../Culling/ray").Ray;
 
 /**
  * This is the base class of all the camera used in the application.
- * @see http://doc.babylonjs.com/features/cameras
+ * @see https://doc.babylonjs.com/features/cameras
  */
 export class Camera extends Node {
     /** @hidden */
@@ -119,12 +119,20 @@ export class Camera extends Node {
         this._position = newPosition;
     }
 
+    @serializeAsVector3("upVector")
+    protected _upVector = Vector3.Up();
+
     /**
      * The vector the camera should consider as up.
      * (default is Vector3(0, 1, 0) aka Vector3.Up())
      */
-    @serializeAsVector3()
-    public upVector = Vector3.Up();
+    public set upVector(vec: Vector3) {
+        this._upVector = vec;
+    }
+
+    public get upVector() {
+        return this._upVector;
+    }
 
     /**
      * Define the current limit on the left side for an orthographic camera
@@ -311,7 +319,7 @@ export class Camera extends Node {
     /**
      * Instantiates a new camera object.
      * This should not be used directly but through the inherited cameras: ArcRotate, Free...
-     * @see http://doc.babylonjs.com/features/cameras
+     * @see https://doc.babylonjs.com/features/cameras
      * @param name Defines the name of the camera in the scene
      * @param position Defines the position of the camera
      * @param scene Defines the scene the camera belongs too
@@ -515,17 +523,38 @@ export class Camera extends Node {
 
     /**
      * Attach the input controls to a specific dom element to get the input from.
-     * @param element Defines the element the controls should be listened from
      * @param noPreventDefault Defines whether event caught by the controls should call preventdefault() (https://developer.mozilla.org/en-US/docs/Web/API/Event/preventDefault)
      */
-    public attachControl(element: HTMLElement, noPreventDefault?: boolean): void {
+    public attachControl(noPreventDefault?: boolean): void;
+    /**
+     * Attach the input controls to a specific dom element to get the input from.
+     * @param ignored defines an ignored parameter kept for backward compatibility. If you want to define the source input element, you can set engine.inputElement before calling camera.attachControl
+     * @param noPreventDefault Defines whether event caught by the controls should call preventdefault() (https://developer.mozilla.org/en-US/docs/Web/API/Event/preventDefault)
+     * BACK COMPAT SIGNATURE ONLY.
+     */
+    public attachControl(ignored: any, noPreventDefault?: boolean): void;
+    /**
+     * Attach the input controls to a specific dom element to get the input from.
+     * @param ignored defines an ignored parameter kept for backward compatibility. If you want to define the source input element, you can set engine.inputElement before calling camera.attachControl
+     * @param noPreventDefault Defines whether event caught by the controls should call preventdefault() (https://developer.mozilla.org/en-US/docs/Web/API/Event/preventDefault)
+     */
+    public attachControl(ignored?: any, noPreventDefault?: boolean): void {
     }
 
     /**
      * Detach the current controls from the specified dom element.
-     * @param element Defines the element to stop listening the inputs from
      */
-    public detachControl(element: HTMLElement): void {
+    public detachControl(): void;
+    /**
+     * Detach the current controls from the specified dom element.
+     * @param ignored defines an ignored parameter kept for backward compatibility. If you want to define the source input element, you can set engine.inputElement before calling camera.attachControl
+     */
+    public detachControl(ignored: any): void;
+    /**
+     * Detach the current controls from the specified dom element.
+     * @param ignored defines an ignored parameter kept for backward compatibility. If you want to define the source input element, you can set engine.inputElement before calling camera.attachControl
+     */
+    public detachControl(ignored?: any): void {
     }
 
     /**
@@ -598,7 +627,7 @@ export class Camera extends Node {
 
     /**
      * Attach a post process to the camera.
-     * @see http://doc.babylonjs.com/how_to/how_to_use_postprocesses#attach-postprocess
+     * @see https://doc.babylonjs.com/how_to/how_to_use_postprocesses#attach-postprocess
      * @param postProcess The post process to attach to the camera
      * @param insertAt The position of the post process in case several of them are in use in the scene
      * @returns the position the post process has been inserted at
@@ -617,12 +646,18 @@ export class Camera extends Node {
             this._postProcesses.splice(insertAt, 0, postProcess);
         }
         this._cascadePostProcessesToRigCams(); // also ensures framebuffer invalidated
+
+        // Update prePass
+        if (this._scene.prePassRenderer) {
+            this._scene.prePassRenderer.markAsDirty();
+        }
+
         return this._postProcesses.indexOf(postProcess);
     }
 
     /**
      * Detach a post process to the camera.
-     * @see http://doc.babylonjs.com/how_to/how_to_use_postprocesses#attach-postprocess
+     * @see https://doc.babylonjs.com/how_to/how_to_use_postprocesses#attach-postprocess
      * @param postProcess The post process to detach from the camera
      */
     public detachPostProcess(postProcess: PostProcess): void {
@@ -630,6 +665,12 @@ export class Camera extends Node {
         if (idx !== -1) {
             this._postProcesses[idx] = null;
         }
+
+        // Update prePass
+        if (this._scene.prePassRenderer) {
+            this._scene.prePassRenderer.markAsDirty();
+        }
+
         this._cascadePostProcessesToRigCams(); // also ensures framebuffer invalidated
     }
 
@@ -849,6 +890,18 @@ export class Camera extends Node {
      * @returns the forward ray
      */
     public getForwardRay(length = 100, transform?: Matrix, origin?: Vector3): Ray {
+        throw _DevTools.WarnImport("Ray");
+    }
+
+    /**
+     * Gets a ray in the forward direction from the camera.
+     * @param refRay the ray to (re)use when setting the values
+     * @param length Defines the length of the ray to create
+     * @param transform Defines the transform to apply to the ray, by default the world matrx is used to create a workd space ray
+     * @param origin Defines the start point of the ray which defaults to the camera position
+     * @returns the forward ray
+     */
+    public getForwardRayToRef(refRay: Ray, length = 100, transform?: Matrix, origin?: Vector3): Ray {
         throw _DevTools.WarnImport("Ray");
     }
 
@@ -1248,6 +1301,10 @@ export class Camera extends Node {
             camera.inputs.parse(parsedCamera);
 
             camera._setupInputs();
+        }
+
+        if (parsedCamera.upVector) {
+            camera.upVector = Vector3.FromArray(parsedCamera.upVector); // need to force the upVector
         }
 
         if ((<any>camera).setPosition) { // need to force position

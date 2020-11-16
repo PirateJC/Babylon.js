@@ -209,7 +209,7 @@ export class AnimationGroup implements IDisposable {
     /**
      * Instantiates a new Animation Group.
      * This helps managing several animations at once.
-     * @see http://doc.babylonjs.com/how_to/group
+     * @see https://doc.babylonjs.com/how_to/group
      * @param name Defines the name of the group
      * @param scene Defines the scene the group belongs to
      */
@@ -280,7 +280,7 @@ export class AnimationGroup implements IDisposable {
                 let newKey: IAnimationKey = {
                     frame: endFrame,
                     value: endKey.value,
-                    inTangent: endKey.outTangent,
+                    inTangent: endKey.inTangent,
                     outTangent: endKey.outTangent,
                     interpolation: endKey.interpolation
                 };
@@ -427,6 +427,9 @@ export class AnimationGroup implements IDisposable {
      */
     public reset(): AnimationGroup {
         if (!this._isStarted) {
+            this.play();
+            this.goToFrame(0);
+            this.stop();
             return this;
         }
 
@@ -480,7 +483,7 @@ export class AnimationGroup implements IDisposable {
      * Set animation weight for all animatables
      * @param weight defines the weight to use
      * @return the animationGroup
-     * @see http://doc.babylonjs.com/babylon101/animations#animation-weights
+     * @see https://doc.babylonjs.com/babylon101/animations#animation-weights
      */
     public setWeightForAllAnimatables(weight: number): AnimationGroup {
         for (var index = 0; index < this._animatables.length; index++) {
@@ -495,7 +498,7 @@ export class AnimationGroup implements IDisposable {
      * Synchronize and normalize all animatables with a source animatable
      * @param root defines the root animatable to synchronize with
      * @return the animationGroup
-     * @see http://doc.babylonjs.com/babylon101/animations#animation-weights
+     * @see https://doc.babylonjs.com/babylon101/animations#animation-weights
      */
     public syncAllAnimationsWith(root: Animatable): AnimationGroup {
         for (var index = 0; index < this._animatables.length; index++) {

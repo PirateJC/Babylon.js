@@ -8,7 +8,7 @@ import { Axis } from '../Maths/math.axis';
 /**
  * A target camera takes a mesh or position as a target and continues to look at it while it moves.
  * This is the base of the follow, arc rotate cameras and Free camera
- * @see http://doc.babylonjs.com/features/cameras
+ * @see https://doc.babylonjs.com/features/cameras
  */
 export class TargetCamera extends Camera {
     private static _RigCamTransformMatrix = new Matrix();
@@ -102,7 +102,7 @@ export class TargetCamera extends Camera {
     /**
      * Instantiates a target camera that takes a mesh or position as a target and continues to look at it while it moves.
      * This is the base of the follow, arc rotate cameras and Free camera
-     * @see http://doc.babylonjs.com/features/cameras
+     * @see https://doc.babylonjs.com/features/cameras
      * @param name Defines the name of the camera in the scene
      * @param position Defines the start position of the camera in the scene
      * @param scene Defines the scene the camera belongs to
@@ -247,6 +247,8 @@ export class TargetCamera extends Camera {
             this.position.z += Epsilon;
         }
 
+        this._referencePoint.normalize().scaleInPlace(this._initialFocalDistance);
+
         Matrix.LookAtLHToRef(this.position, target, this._defaultUp, this._camMatrix);
         this._camMatrix.invert();
 
@@ -277,6 +279,17 @@ export class TargetCamera extends Camera {
         if (this.rotationQuaternion) {
             Quaternion.RotationYawPitchRollToRef(this.rotation.y, this.rotation.x, this.rotation.z, this.rotationQuaternion);
         }
+    }
+
+    /**
+     * Defines the target point of the camera.
+     * The camera looks towards it form the radius distance.
+     */
+    public get target(): Vector3 {
+        return this.getTarget();
+    }
+    public set target(value: Vector3) {
+        this.setTarget(value);
     }
 
     /**
@@ -324,14 +337,7 @@ export class TargetCamera extends Camera {
             this.rotation.x += this.cameraRotation.x * directionMultiplier;
             this.rotation.y += this.cameraRotation.y * directionMultiplier;
 
-            //rotate, if quaternion is set and rotation was used
-            if (this.rotationQuaternion) {
-                var len = this.rotation.lengthSquared();
-                if (len) {
-                    Quaternion.RotationYawPitchRollToRef(this.rotation.y, this.rotation.x, this.rotation.z, this.rotationQuaternion);
-                }
-            }
-
+            // Apply constraints
             if (!this.noRotationConstraint) {
                 var limit = 1.570796;
 
@@ -340,6 +346,14 @@ export class TargetCamera extends Camera {
                 }
                 if (this.rotation.x < -limit) {
                     this.rotation.x = -limit;
+                }
+            }
+
+            //rotate, if quaternion is set and rotation was used
+            if (this.rotationQuaternion) {
+                var len = this.rotation.lengthSquared();
+                if (len) {
+                    Quaternion.RotationYawPitchRollToRef(this.rotation.y, this.rotation.x, this.rotation.z, this.rotationQuaternion);
                 }
             }
         }

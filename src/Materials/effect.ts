@@ -13,7 +13,7 @@ import { IEffectFallbacks } from './iEffectFallbacks';
 
 declare type Engine = import("../Engines/engine").Engine;
 declare type InternalTexture = import("../Materials/Textures/internalTexture").InternalTexture;
-declare type BaseTexture = import("../Materials/Textures/baseTexture").BaseTexture;
+declare type ThinTexture = import("../Materials/Textures/thinTexture").ThinTexture;
 declare type RenderTargetTexture = import("../Materials/Textures/renderTargetTexture").RenderTargetTexture;
 declare type PostProcess = import("../PostProcesses/postProcess").PostProcess;
 
@@ -69,6 +69,10 @@ export interface IEffectCreationOptions {
      * If provided, will be called two times with the vertex and fragment code so that this code can be updated before it is compiled by the GPU
      */
     processFinalCode?: Nullable<(shaderType: string, code: string) => string>;
+    /**
+     * Is this effect rendering to several color attachments ?
+     */
+    multiTarget?: boolean;
 }
 
 /**
@@ -139,6 +143,8 @@ export class Effect implements IDisposable {
 
     /** @hidden */
     public _bonesComputationForcedToCPU = false;
+    /** @hidden */
+    public _multiTarget: boolean = false;
 
     private static _uniqueIdSeed = 0;
     private _engine: Engine;
@@ -166,6 +172,8 @@ export class Effect implements IDisposable {
     private _vertexSourceCodeOverride: string = "";
     private _fragmentSourceCodeOverride: string = "";
     private _transformFeedbackVaryings: Nullable<string[]> = null;
+    private _rawVertexSourceCode: string = "";
+    private _rawFragmentSourceCode: string = "";
     /**
      * Compiled shader to webGL program.
      * @hidden
@@ -208,6 +216,7 @@ export class Effect implements IDisposable {
             this._fallbacks = options.fallbacks;
             this._indexParameters = options.indexParameters;
             this._transformFeedbackVaryings = options.transformFeedbackVaryings || null;
+            this._multiTarget = !!options.multiTarget;
 
             if (options.uniformBuffersNames) {
                 this._uniformBuffersNamesList = options.uniformBuffersNames.slice();
@@ -279,7 +288,9 @@ export class Effect implements IDisposable {
         };
 
         this._loadShader(vertexSource, "Vertex", "", (vertexCode) => {
+            this._rawVertexSourceCode = vertexCode;
             this._loadShader(fragmentSource, "Fragment", "Pixel", (fragmentCode) => {
+                this._rawFragmentSourceCode = fragmentCode;
                 ShaderProcessor.Process(vertexCode, processorOptions, (migratedVertexCode) => {
                     if (processFinalCode) {
                         migratedVertexCode = processFinalCode("vertex", migratedVertexCode);
@@ -290,8 +301,8 @@ export class Effect implements IDisposable {
                             migratedFragmentCode = processFinalCode("fragment", migratedFragmentCode);
                         }
                         this._useFinalCode(migratedVertexCode, migratedFragmentCode, baseName);
-                    });
-                });
+                    }, this._engine);
+                }, this._engine);
             });
         });
     }
@@ -553,6 +564,20 @@ export class Effect implements IDisposable {
     }
 
     /**
+     * Gets the vertex shader source code before it has been processed by the preprocessor
+     */
+    public get rawVertexSourceCode(): string {
+        return this._rawVertexSourceCode;
+    }
+
+    /**
+     * Gets the fragment shader source code before it has been processed by the preprocessor
+     */
+    public get rawFragmentSourceCode(): string {
+        return this._rawFragmentSourceCode;
+    }
+
+    /**
      * Recompiles the webGL program
      * @param vertexSourceCode The source code for the vertex shader.
      * @param fragmentSourceCode The source code for the fragment shader.
@@ -784,7 +809,7 @@ export class Effect implements IDisposable {
      * @param channel Name of the sampler variable.
      * @param texture Texture to set.
      */
-    public setTexture(channel: string, texture: Nullable<BaseTexture>): void {
+    public setTexture(channel: string, texture: Nullable<ThinTexture>): void {
         this._engine.setTexture(this._samplers[channel], this._uniforms[channel], texture);
     }
 
@@ -802,7 +827,7 @@ export class Effect implements IDisposable {
      * @param channel Name of the variable.
      * @param textures Textures to set.
      */
-    public setTextureArray(channel: string, textures: BaseTexture[]): void {
+    public setTextureArray(channel: string, textures: ThinTexture[]): void {
         let exName = channel + "Ex";
         if (this._samplerList.indexOf(exName + "0") === -1) {
             const initialPos = this._samplerList.indexOf(channel);
@@ -967,9 +992,9 @@ export class Effect implements IDisposable {
             return this;
         }
 
-        this._valueCache[uniformName] = value;
-
-        this._engine.setInt(this._uniforms[uniformName], value);
+        if (this._engine.setInt(this._uniforms[uniformName], value)) {
+            this._valueCache[uniformName] = value;
+        }
 
         return this;
     }
@@ -1136,13 +1161,13 @@ export class Effect implements IDisposable {
      * @param matrices matrices to be set.
      * @returns this effect.
      */
-    public setMatrices(uniformName: string, matrices: Float32Array): Effect {
+    public setMatrices(uniformName: string, matrices: Float32Array | Array<number>): Effect {
         if (!matrices) {
             return this;
         }
 
         this._valueCache[uniformName] = null;
-        this._engine.setMatrices(this._uniforms[uniformName], matrices);
+        this._engine.setMatrices(this._uniforms[uniformName], matrices as Float32Array); // the cast is ok because it is gl.uniformMatrix4fv() which is called at the end, and this function accepts Float32Array and Array<number>
 
         return this;
     }
@@ -1155,7 +1180,9 @@ export class Effect implements IDisposable {
      */
     public setMatrix(uniformName: string, matrix: IMatrixLike): Effect {
         if (this._cacheMatrix(uniformName, matrix)) {
-            this._engine.setMatrices(this._uniforms[uniformName], matrix.toArray() as Float32Array);
+            if (!this._engine.setMatrices(this._uniforms[uniformName], matrix.toArray() as Float32Array)) {
+                this._valueCache[uniformName] = null;
+            }
         }
         return this;
     }
@@ -1166,9 +1193,9 @@ export class Effect implements IDisposable {
      * @param matrix matrix to be set.
      * @returns this effect.
      */
-    public setMatrix3x3(uniformName: string, matrix: Float32Array): Effect {
+    public setMatrix3x3(uniformName: string, matrix: Float32Array | Array<number>): Effect {
         this._valueCache[uniformName] = null;
-        this._engine.setMatrix3x3(this._uniforms[uniformName], matrix);
+        this._engine.setMatrix3x3(this._uniforms[uniformName], matrix as Float32Array); // the cast is ok because it is gl.uniformMatrix3fv() which is called at the end, and this function accepts Float32Array and Array<number>
 
         return this;
     }
@@ -1179,9 +1206,9 @@ export class Effect implements IDisposable {
      * @param matrix matrix to be set.
      * @returns this effect.
      */
-    public setMatrix2x2(uniformName: string, matrix: Float32Array): Effect {
+    public setMatrix2x2(uniformName: string, matrix: Float32Array | Array<number>): Effect {
         this._valueCache[uniformName] = null;
-        this._engine.setMatrix2x2(this._uniforms[uniformName], matrix);
+        this._engine.setMatrix2x2(this._uniforms[uniformName], matrix as Float32Array); // the cast is ok because it is gl.uniformMatrix2fv() which is called at the end, and this function accepts Float32Array and Array<number>
 
         return this;
     }
@@ -1198,9 +1225,9 @@ export class Effect implements IDisposable {
             return this;
         }
 
-        this._valueCache[uniformName] = value;
-
-        this._engine.setFloat(this._uniforms[uniformName], value);
+        if (this._engine.setFloat(this._uniforms[uniformName], value)) {
+            this._valueCache[uniformName] = value;
+        }
 
         return this;
     }
@@ -1217,9 +1244,9 @@ export class Effect implements IDisposable {
             return this;
         }
 
-        this._valueCache[uniformName] = bool;
-
-        this._engine.setInt(this._uniforms[uniformName], bool ? 1 : 0);
+        if (this._engine.setInt(this._uniforms[uniformName], bool ? 1 : 0)) {
+            this._valueCache[uniformName] = bool;
+        }
 
         return this;
     }
@@ -1232,7 +1259,9 @@ export class Effect implements IDisposable {
      */
     public setVector2(uniformName: string, vector2: IVector2Like): Effect {
         if (this._cacheFloat2(uniformName, vector2.x, vector2.y)) {
-            this._engine.setFloat2(this._uniforms[uniformName], vector2.x, vector2.y);
+            if (!this._engine.setFloat2(this._uniforms[uniformName], vector2.x, vector2.y)) {
+                this._valueCache[uniformName] = null;
+            }
         }
         return this;
     }
@@ -1246,7 +1275,9 @@ export class Effect implements IDisposable {
      */
     public setFloat2(uniformName: string, x: number, y: number): Effect {
         if (this._cacheFloat2(uniformName, x, y)) {
-            this._engine.setFloat2(this._uniforms[uniformName], x, y);
+            if (!this._engine.setFloat2(this._uniforms[uniformName], x, y)) {
+                this._valueCache[uniformName] = null;
+            }
         }
         return this;
     }
@@ -1259,7 +1290,9 @@ export class Effect implements IDisposable {
      */
     public setVector3(uniformName: string, vector3: IVector3Like): Effect {
         if (this._cacheFloat3(uniformName, vector3.x, vector3.y, vector3.z)) {
-            this._engine.setFloat3(this._uniforms[uniformName], vector3.x, vector3.y, vector3.z);
+            if (!this._engine.setFloat3(this._uniforms[uniformName], vector3.x, vector3.y, vector3.z)) {
+                this._valueCache[uniformName] = null;
+            }
         }
         return this;
     }
@@ -1274,7 +1307,9 @@ export class Effect implements IDisposable {
      */
     public setFloat3(uniformName: string, x: number, y: number, z: number): Effect {
         if (this._cacheFloat3(uniformName, x, y, z)) {
-            this._engine.setFloat3(this._uniforms[uniformName], x, y, z);
+            if (!this._engine.setFloat3(this._uniforms[uniformName], x, y, z)) {
+                this._valueCache[uniformName] = null;
+            }
         }
         return this;
     }
@@ -1287,7 +1322,9 @@ export class Effect implements IDisposable {
      */
     public setVector4(uniformName: string, vector4: IVector4Like): Effect {
         if (this._cacheFloat4(uniformName, vector4.x, vector4.y, vector4.z, vector4.w)) {
-            this._engine.setFloat4(this._uniforms[uniformName], vector4.x, vector4.y, vector4.z, vector4.w);
+            if (!this._engine.setFloat4(this._uniforms[uniformName], vector4.x, vector4.y, vector4.z, vector4.w)) {
+                this._valueCache[uniformName] = null;
+            }
         }
         return this;
     }
@@ -1303,7 +1340,9 @@ export class Effect implements IDisposable {
      */
     public setFloat4(uniformName: string, x: number, y: number, z: number, w: number): Effect {
         if (this._cacheFloat4(uniformName, x, y, z, w)) {
-            this._engine.setFloat4(this._uniforms[uniformName], x, y, z, w);
+            if (!this._engine.setFloat4(this._uniforms[uniformName], x, y, z, w)) {
+                this._valueCache[uniformName] = null;
+            }
         }
         return this;
     }
@@ -1316,7 +1355,9 @@ export class Effect implements IDisposable {
      */
     public setColor3(uniformName: string, color3: IColor3Like): Effect {
         if (this._cacheFloat3(uniformName, color3.r, color3.g, color3.b)) {
-            this._engine.setFloat3(this._uniforms[uniformName], color3.r, color3.g, color3.b);
+            if (!this._engine.setFloat3(this._uniforms[uniformName], color3.r, color3.g, color3.b)) {
+                this._valueCache[uniformName] = null;
+            }
         }
         return this;
     }
@@ -1330,7 +1371,9 @@ export class Effect implements IDisposable {
      */
     public setColor4(uniformName: string, color3: IColor3Like, alpha: number): Effect {
         if (this._cacheFloat4(uniformName, color3.r, color3.g, color3.b, alpha)) {
-            this._engine.setFloat4(this._uniforms[uniformName], color3.r, color3.g, color3.b, alpha);
+            if (!this._engine.setFloat4(this._uniforms[uniformName], color3.r, color3.g, color3.b, alpha)) {
+                this._valueCache[uniformName] = null;
+            }
         }
         return this;
     }
@@ -1343,7 +1386,9 @@ export class Effect implements IDisposable {
      */
     public setDirectColor4(uniformName: string, color4: IColor4Like): Effect {
         if (this._cacheFloat4(uniformName, color4.r, color4.g, color4.b, color4.a)) {
-            this._engine.setFloat4(this._uniforms[uniformName], color4.r, color4.g, color4.b, color4.a);
+            if (!this._engine.setFloat4(this._uniforms[uniformName], color4.r, color4.g, color4.b, color4.a)) {
+                this._valueCache[uniformName] = null;
+            }
         }
         return this;
     }

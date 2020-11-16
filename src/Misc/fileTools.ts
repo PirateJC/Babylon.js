@@ -197,7 +197,8 @@ export class FileTools {
             img.removeEventListener("error", errorHandler);
 
             if (onError) {
-                onError("Error while trying to load image: " + input, err);
+                const inputText = input.toString();
+                onError("Error while trying to load image: " + (inputText.length < 32 ? inputText : inputText.slice(0, 32) + "..."), err);
             }
 
             if (usingObjectURL && img.src) {
@@ -468,7 +469,7 @@ export class FileTools {
      * @returns boolean
      */
     public static IsFileURL(): boolean {
-        return location.protocol === "file:";
+        return typeof location !== "undefined" && location.protocol === "file:";
     }
 }
 

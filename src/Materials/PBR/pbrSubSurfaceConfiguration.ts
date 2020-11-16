@@ -38,6 +38,7 @@ export interface IMaterialSubSurfaceDefines {
     SS_ALBEDOFORREFRACTIONTINT: boolean;
 
     SS_MASK_FROM_THICKNESS_TEXTURE: boolean;
+    SS_MASK_FROM_THICKNESS_TEXTURE_GLTF: boolean;
 
     /** @hidden */
     _areTexturesDirty: boolean;
@@ -47,6 +48,7 @@ export interface IMaterialSubSurfaceDefines {
  * Define the code related to the sub surface parameters of the pbr material.
  */
 export class PBRSubSurfaceConfiguration {
+
     private _isRefractionEnabled = false;
     /**
      * Defines if the refraction is enabled in the material.
@@ -64,12 +66,39 @@ export class PBRSubSurfaceConfiguration {
     public isTranslucencyEnabled = false;
 
     private _isScatteringEnabled = false;
-    // /**
-    //  * Defines if the sub surface scattering is enabled in the material.
-    //  */
-    // @serialize()
-    // @expandToProperty("_markAllSubMeshesAsTexturesDirty")
-    // public isScatteringEnabled = false;
+    /**
+     * Defines if the sub surface scattering is enabled in the material.
+     */
+    @serialize()
+    @expandToProperty("_markScenePrePassDirty")
+    public isScatteringEnabled = false;
+
+    @serialize()
+    private _scatteringDiffusionProfileIndex = 0;
+
+    /**
+     * Diffusion profile for subsurface scattering.
+     * Useful for better scattering in the skins or foliages.
+     */
+    public get scatteringDiffusionProfile() : Nullable<Color3> {
+        if (!this._scene.subSurfaceConfiguration) {
+            return null;
+        }
+
+        return this._scene.subSurfaceConfiguration.ssDiffusionProfileColors[this._scatteringDiffusionProfileIndex];
+    }
+
+    public set scatteringDiffusionProfile(c: Nullable<Color3>) {
+        if (!this._scene.enableSubSurfaceForPrePass()) {
+            // Not supported
+            return;
+        }
+
+        // addDiffusionProfile automatically checks for doubles
+        if (c) {
+            this._scatteringDiffusionProfileIndex = this._scene.subSurfaceConfiguration!.addDiffusionProfile(c);
+        }
+    }
 
     /**
      * Defines the refraction intensity of the material.
@@ -86,14 +115,6 @@ export class PBRSubSurfaceConfiguration {
      */
     @serialize()
     public translucencyIntensity: number = 1;
-
-    /**
-     * Defines the scattering intensity of the material.
-     * When scattering has been enabled, this defines how much of the "scattered light"
-     * is addded to the diffuse part of the material.
-     */
-    @serialize()
-    public scatteringIntensity: number = 1;
 
     /**
      * When enabled, transparent surfaces will be tinted with the albedo colour (independent of thickness)
@@ -134,6 +155,7 @@ export class PBRSubSurfaceConfiguration {
     @expandToProperty("_markAllSubMeshesAsTexturesDirty")
     public indexOfRefraction = 1.5;
 
+    @serialize()
     private _volumeIndexOfRefraction = -1.0;
 
     /**
@@ -143,7 +165,6 @@ export class PBRSubSurfaceConfiguration {
      * This ONLY impacts refraction. If not provided or given a non-valid value,
      * the volume will use the same IOR as the surface.
      */
-    @serialize()
     @expandToProperty("_markAllSubMeshesAsTexturesDirty")
     public get volumeIndexOfRefraction(): number {
         if (this._volumeIndexOfRefraction >= 1.0) {
@@ -221,20 +242,42 @@ export class PBRSubSurfaceConfiguration {
     @expandToProperty("_markAllSubMeshesAsTexturesDirty")
     public useMaskFromThicknessTexture: boolean = false;
 
+    private _scene: Scene;
+    private _useMaskFromThicknessTextureGltf = false;
+    /**
+     * Stores the intensity of the different subsurface effects in the thickness texture. This variation
+     * matches the channel-packing that is used by glTF.
+     * * the red channel is the transmission/translucency intensity.
+     * * the green channel is the thickness.
+     */
+    @serialize()
+    @expandToProperty("_markAllSubMeshesAsTexturesDirty")
+    public useMaskFromThicknessTextureGltf: boolean = false;
+
     /** @hidden */
     private _internalMarkAllSubMeshesAsTexturesDirty: () => void;
+    private _internalMarkScenePrePassDirty: () => void;
 
     /** @hidden */
     public _markAllSubMeshesAsTexturesDirty(): void {
         this._internalMarkAllSubMeshesAsTexturesDirty();
     }
+    /** @hidden */
+    public _markScenePrePassDirty(): void {
+        this._internalMarkAllSubMeshesAsTexturesDirty();
+        this._internalMarkScenePrePassDirty();
+    }
 
     /**
      * Instantiate a new istance of sub surface configuration.
      * @param markAllSubMeshesAsTexturesDirty Callback to flag the material to dirty
+     * @param markScenePrePassDirty Callback to flag the scene as prepass dirty
+     * @param scene The scene
      */
-    constructor(markAllSubMeshesAsTexturesDirty: () => void) {
+    constructor(markAllSubMeshesAsTexturesDirty: () => void, markScenePrePassDirty: () => void, scene: Scene) {
         this._internalMarkAllSubMeshesAsTexturesDirty = markAllSubMeshesAsTexturesDirty;
+        this._internalMarkScenePrePassDirty = markScenePrePassDirty;
+        this._scene = scene;
     }
 
     /**
@@ -277,6 +320,7 @@ export class PBRSubSurfaceConfiguration {
             defines.SS_SCATTERING = this._isScatteringEnabled;
             defines.SS_THICKNESSANDMASK_TEXTURE = false;
             defines.SS_MASK_FROM_THICKNESS_TEXTURE = false;
+            defines.SS_MASK_FROM_THICKNESS_TEXTURE_GLTF = false;
             defines.SS_REFRACTION = false;
             defines.SS_REFRACTIONMAP_3D = false;
             defines.SS_GAMMAREFRACTION = false;
@@ -299,6 +343,7 @@ export class PBRSubSurfaceConfiguration {
                 }
 
                 defines.SS_MASK_FROM_THICKNESS_TEXTURE = this._useMaskFromThicknessTexture;
+                defines.SS_MASK_FROM_THICKNESS_TEXTURE_GLTF = this._useMaskFromThicknessTextureGltf;
             }
 
             if (this._isRefractionEnabled) {
@@ -363,6 +408,9 @@ export class PBRSubSurfaceConfiguration {
                 }
             }
 
+            if (this.isScatteringEnabled) {
+                uniformBuffer.updateFloat("scatteringDiffusionProfile", this._scatteringDiffusionProfileIndex);
+            }
             uniformBuffer.updateColor3("vDiffusionDistance", this.diffusionDistance);
 
             uniformBuffer.updateFloat4("vTintColor", this.tintColor.r,
@@ -370,7 +418,7 @@ export class PBRSubSurfaceConfiguration {
                 this.tintColor.b,
                 this.tintColorAtDistance);
 
-            uniformBuffer.updateFloat3("vSubSurfaceIntensity", this.refractionIntensity, this.translucencyIntensity, this.scatteringIntensity);
+            uniformBuffer.updateFloat3("vSubSurfaceIntensity", this.refractionIntensity, this.translucencyIntensity, 0);
         }
 
         // Textures
@@ -548,7 +596,7 @@ export class PBRSubSurfaceConfiguration {
             "vDiffusionDistance", "vTintColor", "vSubSurfaceIntensity",
             "vRefractionMicrosurfaceInfos", "vRefractionFilteringInfo",
             "vRefractionInfos", "vThicknessInfos", "vThicknessParam",
-            "refractionMatrix", "thicknessMatrix");
+            "refractionMatrix", "thicknessMatrix", "scatteringDiffusionProfile");
     }
 
     /**
@@ -575,6 +623,7 @@ export class PBRSubSurfaceConfiguration {
         uniformBuffer.addUniform("vDiffusionDistance", 3);
         uniformBuffer.addUniform("vTintColor", 4);
         uniformBuffer.addUniform("vSubSurfaceIntensity", 3);
+        uniformBuffer.addUniform("scatteringDiffusionProfile", 1);
     }
 
     /**

@@ -15,7 +15,8 @@ import { Color4LineComponent } from '../../../lines/color4LineComponent';
 import { FloatLineComponent } from '../../../lines/floatLineComponent';
 import { SliderLineComponent } from '../../../lines/sliderLineComponent';
 import { ButtonLineComponent } from '../../../lines/buttonLineComponent';
-import { TextureHelper, TextureChannelToDisplay } from '../../../../../textureHelper';
+import { TextureHelper } from '../../../../../textureHelper';
+import { Nullable } from 'babylonjs/types';
 
 interface ISpritePropertyGridComponentProps {
     globalState: GlobalState;
@@ -27,7 +28,7 @@ interface ISpritePropertyGridComponentProps {
 
 export class SpritePropertyGridComponent extends React.Component<ISpritePropertyGridComponentProps> {
     private canvasRef: React.RefObject<HTMLCanvasElement>;
-    private imageData: Uint8Array;
+    private imageData: Nullable<Uint8Array> = null;
     private cachedCellIndex = -1;
 
     constructor(props: ISpritePropertyGridComponentProps) {
@@ -62,11 +63,6 @@ export class SpritePropertyGridComponent extends React.Component<ISpriteProperty
         const sprite = this.props.sprite;
         sprite.dispose();
 
-        this.props.globalState.onCodeChangedObservable.notifyObservers({
-            object: sprite,
-            code: `TARGET.dispose();`
-        });
-
         this.props.onSelectionChangedObservable?.notifyObservers(null);
     }
 
@@ -78,6 +74,14 @@ export class SpritePropertyGridComponent extends React.Component<ISpriteProperty
         this.updatePreview();
     }
 
+    shouldComponentUpdate(nextProps: ISpritePropertyGridComponentProps) {
+        if (nextProps.sprite !== this.props.sprite) {
+            this.imageData = null;
+        }
+
+        return true;
+    }
+
     updatePreview() {        
         const sprite = this.props.sprite;        
         const manager = sprite.manager;
@@ -85,7 +89,7 @@ export class SpritePropertyGridComponent extends React.Component<ISpriteProperty
         var size = texture.getSize();
 
         if (!this.imageData) {
-            TextureHelper.GetTextureDataAsync(texture, size.width, size.height, 0, TextureChannelToDisplay.All, this.props.globalState).then(data => {
+            TextureHelper.GetTextureDataAsync(texture, size.width, size.height, 0, {R: true, G:true, B:true, A:true}, this.props.globalState).then(data => {
                 this.imageData = data;
                 this.forceUpdate();
             });
@@ -172,14 +176,14 @@ export class SpritePropertyGridComponent extends React.Component<ISpriteProperty
                     <CheckBoxLineComponent label="Invert V axis" target={sprite} propertyName="invertV" onPropertyChangedObservable={this.props.onPropertyChangedObservable} />
                 </LineContainerComponent>
                 <LineContainerComponent globalState={this.props.globalState} title="SCALE">
-                    <FloatLineComponent label="Width" target={sprite} propertyName="width" min={0} onPropertyChangedObservable={this.props.onPropertyChangedObservable}/>
-                    <FloatLineComponent label="Height" target={sprite} propertyName="height" min={0} onPropertyChangedObservable={this.props.onPropertyChangedObservable}/>
+                    <FloatLineComponent label="Width" lockObject={this.props.lockObject} target={sprite} propertyName="width" min={0} onPropertyChangedObservable={this.props.onPropertyChangedObservable}/>
+                    <FloatLineComponent label="Height" lockObject={this.props.lockObject} target={sprite} propertyName="height" min={0} onPropertyChangedObservable={this.props.onPropertyChangedObservable}/>
                 </LineContainerComponent>
                 <LineContainerComponent globalState={this.props.globalState} title="ANIMATION">
-                    <SliderLineComponent label="Start cell" decimalCount={0} target={sprite} propertyName="fromIndex" minimum={0} maximum={maxCellCount} step={1} onPropertyChangedObservable={this.props.onPropertyChangedObservable} />
-                    <SliderLineComponent label="End cell" decimalCount={0} target={sprite} propertyName="toIndex" minimum={0} maximum={maxCellCount} step={1} onPropertyChangedObservable={this.props.onPropertyChangedObservable} />
+                    <FloatLineComponent label="Start cell" isInteger={true} lockObject={this.props.lockObject} target={sprite} propertyName="fromIndex" min={0} max={maxCellCount} onPropertyChangedObservable={this.props.onPropertyChangedObservable}/>
+                    <FloatLineComponent label="End cell" isInteger={true} lockObject={this.props.lockObject} target={sprite} propertyName="toIndex" min={0} max={maxCellCount} onPropertyChangedObservable={this.props.onPropertyChangedObservable}/>
                     <CheckBoxLineComponent label="Loop" target={sprite} propertyName="loopAnimation" onPropertyChangedObservable={this.props.onPropertyChangedObservable} />
-                    <FloatLineComponent label="Delay" target={sprite} propertyName="delay" digits={0} min={0} isInteger={true} onPropertyChangedObservable={this.props.onPropertyChangedObservable}/>
+                    <FloatLineComponent label="Delay" lockObject={this.props.lockObject} target={sprite} propertyName="delay" digits={0} min={0} isInteger={true} onPropertyChangedObservable={this.props.onPropertyChangedObservable}/>
                     <ButtonLineComponent label={sprite.animationStarted ? "Stop" : "Start"} onClick={() => this.switchPlayStopState()} />
                 </LineContainerComponent>
             </div>

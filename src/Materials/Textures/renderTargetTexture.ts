@@ -18,7 +18,6 @@ import { Constants } from "../../Engines/constants";
 
 import "../../Engines/Extensions/engine.renderTarget";
 import "../../Engines/Extensions/engine.renderTargetCube";
-import { InstancedMesh } from '../../Meshes/instancedMesh';
 import { Engine } from '../../Engines/engine';
 
 /**
@@ -112,10 +111,6 @@ export class RenderTargetTexture extends Texture {
      * Define if sprites should be rendered in your texture.
      */
     public renderSprites = false;
-    /**
-     * Override the default coordinates mode to projection for RTT as it is the most common case for rendered textures.
-     */
-    public coordinatesMode = Texture.PROJECTION_MODE;
     /**
      * Define the camera used to render the texture.
      */
@@ -230,7 +225,7 @@ export class RenderTargetTexture extends Texture {
     public _generateMipMaps: boolean;
     protected _renderingManager: RenderingManager;
     /** @hidden */
-    public _waitingRenderList: string[];
+    public _waitingRenderList?: string[];
     protected _doNotChangeAspectRatio: boolean;
     protected _currentRefreshId = -1;
     protected _refreshRate = 1;
@@ -304,13 +299,14 @@ export class RenderTargetTexture extends Texture {
      * @param format The internal format of the buffer in the RTT (RED, RG, RGB, RGBA, ALPHA...)
      * @param delayAllocation if the texture allocation should be delayed (default: false)
      */
-    constructor(name: string, size: number | { width: number, height: number, layers?: number } | { ratio: number }, scene: Nullable<Scene>, generateMipMaps?: boolean, doNotChangeAspectRatio: boolean = true, type: number = Constants.TEXTURETYPE_UNSIGNED_INT, public isCube = false, samplingMode = Texture.TRILINEAR_SAMPLINGMODE, generateDepthBuffer = true, generateStencilBuffer = false, isMulti = false, format = Constants.TEXTUREFORMAT_RGBA, delayAllocation = false) {
+    constructor(name: string, size: number | { width: number, height: number, layers?: number } | { ratio: number }, scene: Nullable<Scene>, generateMipMaps?: boolean, doNotChangeAspectRatio: boolean = true, type: number = Constants.TEXTURETYPE_UNSIGNED_INT, isCube = false, samplingMode = Texture.TRILINEAR_SAMPLINGMODE, generateDepthBuffer = true, generateStencilBuffer = false, isMulti = false, format = Constants.TEXTUREFORMAT_RGBA, delayAllocation = false) {
         super(null, scene, !generateMipMaps);
         scene = this.getScene();
         if (!scene) {
             return;
         }
 
+        this._coordinatesMode = Texture.PROJECTION_MODE;
         this.renderList = new Array<AbstractMesh>();
         this.name = name;
         this.isRenderTarget = true;
@@ -644,7 +640,7 @@ export class RenderTargetTexture extends Texture {
                 }
             }
 
-            delete this._waitingRenderList;
+            this._waitingRenderList = undefined;
         }
 
         // Is predicate defined?
@@ -745,7 +741,7 @@ export class RenderTargetTexture extends Texture {
         for (var meshIndex = 0; meshIndex < currentRenderListLength; meshIndex++) {
             var mesh = currentRenderList[meshIndex];
 
-            if (mesh) {
+            if (mesh && !mesh.isBlocked) {
                 if (this.customIsReadyFunction) {
                     if (!this.customIsReadyFunction(mesh, this.refreshRate)) {
                         this.resetRefreshCounter();
@@ -757,7 +753,17 @@ export class RenderTargetTexture extends Texture {
                     continue;
                 }
 
-                mesh._preActivateForIntermediateRendering(sceneRenderId);
+                if (!mesh._internalAbstractMeshDataInfo._currentLODIsUpToDate && scene.activeCamera) {
+                    mesh._internalAbstractMeshDataInfo._currentLOD = scene.customLODSelector ? scene.customLODSelector(mesh, scene.activeCamera) : mesh.getLOD(scene.activeCamera);
+                    mesh._internalAbstractMeshDataInfo._currentLODIsUpToDate = true;
+                }
+                if (!mesh._internalAbstractMeshDataInfo._currentLOD) {
+                    continue;
+                }
+
+                let meshToRender = mesh._internalAbstractMeshDataInfo._currentLOD;
+
+                meshToRender._preActivateForIntermediateRendering(sceneRenderId);
 
                 let isMasked;
                 if (checkLayerMask && camera) {
@@ -767,19 +773,22 @@ export class RenderTargetTexture extends Texture {
                 }
 
                 if (mesh.isEnabled() && mesh.isVisible && mesh.subMeshes && !isMasked) {
+                    if (meshToRender !== mesh) {
+                        meshToRender._activate(sceneRenderId, true);
+                    }
                     if (mesh._activate(sceneRenderId, true) && mesh.subMeshes.length) {
                         if (!mesh.isAnInstance) {
-                            mesh._internalAbstractMeshDataInfo._onlyForInstancesIntermediate = false;
+                            meshToRender._internalAbstractMeshDataInfo._onlyForInstancesIntermediate = false;
                         } else {
-                            if (!mesh._internalAbstractMeshDataInfo._actAsRegularMesh) {
-                                mesh = (mesh as InstancedMesh).sourceMesh;
+                            if (mesh._internalAbstractMeshDataInfo._actAsRegularMesh) {
+                                meshToRender = mesh;
                             }
                         }
-                        mesh._internalAbstractMeshDataInfo._isActiveIntermediate = true;
+                        meshToRender._internalAbstractMeshDataInfo._isActiveIntermediate = true;
 
-                        for (var subIndex = 0; subIndex < mesh.subMeshes.length; subIndex++) {
-                            var subMesh = mesh.subMeshes[subIndex];
-                            this._renderingManager.dispatch(subMesh, mesh);
+                        for (var subIndex = 0; subIndex < meshToRender.subMeshes.length; subIndex++) {
+                            var subMesh = meshToRender.subMeshes[subIndex];
+                            this._renderingManager.dispatch(subMesh, meshToRender);
                         }
                     }
                 }

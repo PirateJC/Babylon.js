@@ -17,7 +17,7 @@ declare type Engine = import("../Engines/engine").Engine;
 export class ScreenshotTools {
     /**
      * Captures a screenshot of the current rendering
-     * @see http://doc.babylonjs.com/how_to/render_scene_on_a_png
+     * @see https://doc.babylonjs.com/how_to/render_scene_on_a_png
      * @param engine defines the rendering engine
      * @param camera defines the source camera
      * @param size This parameter can be set to a single number or to an object with the
@@ -69,7 +69,7 @@ export class ScreenshotTools {
 
     /**
      * Captures a screenshot of the current rendering
-     * @see http://doc.babylonjs.com/how_to/render_scene_on_a_png
+     * @see https://doc.babylonjs.com/how_to/render_scene_on_a_png
      * @param engine defines the rendering engine
      * @param camera defines the source camera
      * @param size This parameter can be set to a single number or to an object with the
@@ -96,7 +96,7 @@ export class ScreenshotTools {
 
     /**
      * Generates an image screenshot from the specified camera.
-     * @see http://doc.babylonjs.com/how_to/render_scene_on_a_png
+     * @see https://doc.babylonjs.com/how_to/render_scene_on_a_png
      * @param engine The engine to use for rendering
      * @param camera The camera to use for rendering
      * @param size This parameter can be set to a single number or to an object with the
@@ -113,8 +113,9 @@ export class ScreenshotTools {
      * @param antialiasing Whether antialiasing should be turned on or not (default: false)
      * @param fileName A name for for the downloaded file.
      * @param renderSprites Whether the sprites should be rendered or not (default: false)
+     * @param enableStencilBuffer Whether the stencil buffer should be enabled or not (default: false)
      */
-    public static CreateScreenshotUsingRenderTarget(engine: Engine, camera: Camera, size: IScreenshotSize | number, successCallback?: (data: string) => void, mimeType: string = "image/png", samples: number = 1, antialiasing: boolean = false, fileName?: string, renderSprites: boolean = false): void {
+    public static CreateScreenshotUsingRenderTarget(engine: Engine, camera: Camera, size: IScreenshotSize | number, successCallback?: (data: string) => void, mimeType: string = "image/png", samples: number = 1, antialiasing: boolean = false, fileName?: string, renderSprites: boolean = false, enableStencilBuffer: boolean = false): void {
         const { height, width } = ScreenshotTools._getScreenshotSize(engine, camera, size);
         let targetTextureSize = { width, height };
 
@@ -122,15 +123,6 @@ export class ScreenshotTools {
             Logger.Error("Invalid 'size' parameter !");
             return;
         }
-
-        var scene = camera.getScene();
-        var previousCamera: Nullable<Camera> = null;
-
-        if (scene.activeCamera !== camera) {
-            previousCamera = scene.activeCamera;
-            scene.activeCamera = camera;
-        }
-
         var renderCanvas = engine.getRenderingCanvas();
         if (!renderCanvas) {
             Logger.Error("No rendering canvas found !");
@@ -139,10 +131,20 @@ export class ScreenshotTools {
 
         var originalSize = { width: renderCanvas.width, height: renderCanvas.height };
         engine.setSize(width, height);
+
+        var scene = camera.getScene();
+
+        var previousCamera: Nullable<Camera> = null;
+        var previousCameras = scene.activeCameras;
+        if (scene.activeCamera !== camera || scene.activeCameras && scene.activeCameras.length) {
+            previousCamera = scene.activeCamera;
+            scene.activeCamera = camera;
+        }
+
         scene.render();
 
         // At this point size can be a number, or an object (according to engine.prototype.createRenderTargetTexture method)
-        var texture = new RenderTargetTexture("screenShot", targetTextureSize, scene, false, false, Constants.TEXTURETYPE_UNSIGNED_INT, false, Texture.NEAREST_SAMPLINGMODE);
+        var texture = new RenderTargetTexture("screenShot", targetTextureSize, scene, false, false, Constants.TEXTURETYPE_UNSIGNED_INT, false, Texture.NEAREST_SAMPLINGMODE, undefined, enableStencilBuffer);
         texture.renderList = null;
         texture.samples = samples;
         texture.renderSprites = renderSprites;
@@ -159,6 +161,8 @@ export class ScreenshotTools {
             if (previousCamera) {
                 scene.activeCamera = previousCamera;
             }
+            scene.activeCameras = previousCameras;
+
             engine.setSize(originalSize.width, originalSize.height);
             camera.getProjectionMatrix(true); // Force cache refresh;
         };
@@ -185,7 +189,7 @@ export class ScreenshotTools {
 
     /**
      * Generates an image screenshot from the specified camera.
-     * @see http://doc.babylonjs.com/how_to/render_scene_on_a_png
+     * @see https://doc.babylonjs.com/how_to/render_scene_on_a_png
      * @param engine The engine to use for rendering
      * @param camera The camera to use for rendering
      * @param size This parameter can be set to a single number or to an object with the

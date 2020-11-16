@@ -23,6 +23,7 @@ export class NodeMaterialBlock {
     private _target: NodeMaterialBlockTargets;
     private _isFinalMerger = false;
     private _isInput = false;
+    private _name = "";
     protected _isUnique = false;
 
     /** Gets or sets a boolean indicating that only one input can be connected at a time */
@@ -40,9 +41,22 @@ export class NodeMaterialBlock {
     public _preparationId: number;
 
     /**
-     * Gets or sets the name of the block
+     * Gets the name of the block
      */
-    public name: string;
+    public get name(): string {
+         return this._name;
+    }
+
+    /**
+     * Sets the name of the block. Will check if the name is valid.
+     */
+    public set name(newName: string) {
+        if (!this.validateBlockName(newName)) {
+            return;
+        }
+
+        this._name = newName;
+    }
 
     /**
      * Gets or sets the unique id of the node
@@ -142,6 +156,9 @@ export class NodeMaterialBlock {
         return null;
     }
 
+     /** Gets or sets a boolean indicating that this input can be edited in the Inspector (false by default) */
+     public visibleInInspector = false;
+
     /**
      * Creates a new NodeMaterialBlock
      * @param name defines the block name
@@ -150,12 +167,11 @@ export class NodeMaterialBlock {
      * @param isInput defines a boolean indicating that this block is an input (e.g. it sends data to the shader). Default is false
      */
     public constructor(name: string, target = NodeMaterialBlockTargets.Vertex, isFinalMerger = false, isInput = false) {
-        this.name = name;
 
         this._target = target;
-
         this._isFinalMerger = isFinalMerger;
         this._isInput = isInput;
+        this._name = name;
         this.uniqueId = UniqueIdGenerator.UniqueId;
     }
 
@@ -409,8 +425,12 @@ export class NodeMaterialBlock {
         return true;
     }
 
-    protected _linkConnectionTypes(inputIndex0: number, inputIndex1: number) {
-        this._inputs[inputIndex0]._linkedConnectionSource = this._inputs[inputIndex1];
+    protected _linkConnectionTypes(inputIndex0: number, inputIndex1: number, looseCoupling = false) {
+        if (looseCoupling) {
+            this._inputs[inputIndex1]._acceptedConnectionPointType = this._inputs[inputIndex0];
+        } else {
+            this._inputs[inputIndex0]._linkedConnectionSource = this._inputs[inputIndex1];
+        }
         this._inputs[inputIndex1]._linkedConnectionSource = this._inputs[inputIndex0];
     }
 
@@ -436,6 +456,37 @@ export class NodeMaterialBlock {
                 input._enforceAssociatedVariableName = true;
             }
         }
+    }
+
+    /**
+    * Validates the new name for the block node.
+    * @param newName the new name to be given to the node.
+    * @returns false if the name is a reserve word, else true.
+    */
+    public validateBlockName(newName: string) {
+        let reservedNames: Array<string> = [
+        "position",
+        "normal",
+        "tangent",
+        "particle_positionw",
+        "uv",
+        "uv2",
+        "position2d",
+        "particle_uv",
+        "matricesIndices",
+        "matricesWeights",
+        "world0",
+        "world1",
+        "world2",
+        "world3",
+        "particle_color",
+        "particle_texturemask"];
+        for (var reservedName of reservedNames) {
+            if (newName === reservedName) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -539,7 +590,8 @@ export class NodeMaterialBlock {
     }
 
     protected _dumpPropertiesCode() {
-        return "";
+        let variableName = this._codeVariableName;
+        return `${variableName}.visibleInInspector = ${this.visibleInInspector};\r\n`;
     }
 
     /** @hidden */
@@ -659,6 +711,7 @@ export class NodeMaterialBlock {
         serializationObject.id = this.uniqueId;
         serializationObject.name = this.name;
         serializationObject.comments = this.comments;
+        serializationObject.visibleInInspector = this.visibleInInspector;
 
         serializationObject.inputs = [];
         serializationObject.outputs = [];
@@ -678,6 +731,7 @@ export class NodeMaterialBlock {
     public _deserialize(serializationObject: any, scene: Scene, rootUrl: string) {
         this.name = serializationObject.name;
         this.comments = serializationObject.comments;
+        this.visibleInInspector = !!serializationObject.visibleInInspector;
         this._deserializePortDisplayNamesAndExposedOnFrame(serializationObject);
     }
 
@@ -691,6 +745,7 @@ export class NodeMaterialBlock {
                 }
                 if (port.isExposedOnFrame) {
                     this.inputs[i].isExposedOnFrame = port.isExposedOnFrame;
+                    this.inputs[i].exposedPortPosition = port.exposedPortPosition;
                 }
             });
         }
@@ -701,6 +756,7 @@ export class NodeMaterialBlock {
                 }
                 if (port.isExposedOnFrame) {
                     this.outputs[i].isExposedOnFrame = port.isExposedOnFrame;
+                    this.outputs[i].exposedPortPosition = port.exposedPortPosition;
                 }
             });
         }

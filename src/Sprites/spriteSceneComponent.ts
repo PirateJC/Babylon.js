@@ -23,7 +23,7 @@ declare module "../scene" {
 
         /**
          * All of the sprite managers added to this scene
-         * @see http://doc.babylonjs.com/babylon101/sprites
+         * @see https://doc.babylonjs.com/babylon101/sprites
          */
         spriteManagers: Array<ISpriteManager>;
 
@@ -171,9 +171,13 @@ Scene.prototype._internalMultiPickSprites = function(ray: Ray, predicate?: (spri
 };
 
 Scene.prototype.pickSprite = function(x: number, y: number, predicate?: (sprite: Sprite) => boolean, fastCheck?: boolean, camera?: Camera): Nullable<PickingInfo> {
-    this.createPickingRayInCameraSpaceToRef(x, y, this._tempSpritePickingRay!, camera);
+    if (!this._tempSpritePickingRay) {
+        return null;
+    }
 
-    return this._internalPickSprites(this._tempSpritePickingRay!, predicate, fastCheck, camera);
+    this.createPickingRayInCameraSpaceToRef(x, y, this._tempSpritePickingRay, camera);
+
+    return this._internalPickSprites(this._tempSpritePickingRay, predicate, fastCheck, camera);
 };
 
 Scene.prototype.pickSpriteWithRay = function(ray: Ray, predicate?: (sprite: Sprite) => boolean, fastCheck?: boolean, camera?: Camera): Nullable<PickingInfo> {

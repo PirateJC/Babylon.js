@@ -8,13 +8,9 @@ import { BaseTexture } from 'babylonjs/Materials/Textures/baseTexture';
 import { INode, IMaterial, IBuffer, IScene } from "../glTFLoaderInterfaces";
 import { IGLTFLoaderExtension } from "../glTFLoaderExtension";
 import { GLTFLoader, ArrayItem } from "../glTFLoader";
-import { IProperty } from 'babylonjs-gltf2interface';
+import { IProperty, IMSFTLOD } from 'babylonjs-gltf2interface';
 
 const NAME = "MSFT_lod";
-
-interface IMSFTLOD {
-    ids: number[];
-}
 
 interface IBufferInfo {
     start: number;
@@ -82,7 +78,7 @@ export class MSFT_lod implements IGLTFLoaderExtension {
 
     /** @hidden */
     public dispose() {
-        delete this._loader;
+        (this._loader as any) = null;
 
         this._nodeIndexLOD = null;
         this._nodeSignalLODs.length = 0;
@@ -198,7 +194,7 @@ export class MSFT_lod implements IGLTFLoaderExtension {
     }
 
     /** @hidden */
-    public _loadMaterialAsync(context: string, material: IMaterial, babylonMesh: Mesh, babylonDrawMode: number, assign: (babylonMaterial: Material) => void): Nullable<Promise<Material>> {
+    public _loadMaterialAsync(context: string, material: IMaterial, babylonMesh: Nullable<Mesh>, babylonDrawMode: number, assign: (babylonMaterial: Material) => void): Nullable<Promise<Material>> {
         // Don't load material LODs if already loading a node LOD.
         if (this._nodeIndexLOD) {
             return null;

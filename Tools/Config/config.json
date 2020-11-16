@@ -47,7 +47,8 @@
         "serializers",
         "gui",
         "inspector",
-        "nodeEditor"
+        "nodeEditor",
+        "uiControls"
     ],
     "es6modules": [
         "core",
@@ -59,7 +60,13 @@
         "gui",
         "inspector",
         "viewer",
-        "nodeEditor"
+        "nodeEditor",
+        "uiControls"
+    ],
+    "apps": [
+        "playground",
+        "sandbox",
+        "ktx2Decoder"
     ],
     "lintModules": [
         "core",
@@ -634,6 +641,83 @@
                 "typings": "babylon.nodeEditor.module.d.ts",
                 "index": "babylon.nodeEditor.max.js"
             }
+        }
+    },
+    "uiControls": {
+        "libraries": [
+            {
+                "output": "babylon.uiControls.js",
+                "entry": "./legacy/legacy.ts"
+            }
+        ],
+        "build": {            
+            "ignoreInWorkerMode": true,
+            "ignoreInTestMode": true,
+            "mainFolder": "./uiControls/",
+            "uncheckedLintImports": [
+                "react",
+                "react-dom"
+            ],
+            "umd": {
+                "packageName": "babylonjs-ui-controls",
+                "webpackRoot": "UICONTROLS",
+                "processDeclaration": {
+                    "filename": "babylon.uiControls.module.d.ts",
+                    "moduleName": "UICONTROLS",
+                    "importsToRemove": [],
+                    "classMap": {
+                        "babylonjs": "BABYLON",
+                        "react": "React",
+                        "@babylonjs/core": "BABYLON",
+                        "@fortawesome": false,
+                        "react-contextmenu": false
+                    }
+                }
+            },
+            "es6": {
+                "webpackBuild": true,
+                "buildDependencies": [
+                    "Tools/**/*"
+                ],
+                "packageName": "@babylonjs/ui-controls",
+                "readme": "dist/preview release/uiControls/readme-es6.md",
+                "packagesFiles": [
+                    "babylon.uiControls.max.js",
+                    "babylon.uiControls.max.js.map",
+                    "babylon.uiControls.module.d.ts",
+                    "readme.md"
+                ],
+                "typings": "babylon.uiControls.module.d.ts",
+                "index": "babylon.uiControls.max.js"
+            }
+        }
+    },
+    "ktx2Decoder": {
+        "tempFileName": "babylon.ktx2Decoder.js",
+        "distFile": "/dist/preview release/babylon.ktx2Decoder.js",
+        "build": {
+            "ignoreInWorkerMode": true,
+            "ignoreInTestMode": true,
+            "distOutputDirectory": "../../dist/preview release/",
+            "mainFolder": "./ktx2Decoder/"
+        }
+    },
+    "playground": {
+        "distFile": "/Playground/dist/babylon.playground.js",
+        "build": {
+            "ignoreInWorkerMode": true,
+            "ignoreInTestMode": true,
+            "distOutputDirectory": "../../Playground/dist/",
+            "mainFolder": "./Playground/"
+        }
+    },
+    "sandbox": {
+        "distFile": "/sandbox/public/dist/babylon.sandbox.js",
+        "build": {
+            "ignoreInWorkerMode": true,
+            "ignoreInTestMode": true,
+            "distOutputDirectory": "../../sandbox/public/dist/",
+            "mainFolder": "./sandbox/"
         }
     },
     "viewer": {

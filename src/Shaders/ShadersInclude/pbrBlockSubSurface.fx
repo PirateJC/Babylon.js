@@ -13,6 +13,7 @@ struct subSurfaceOutParams
 #endif
 #ifdef SS_TRANSLUCENCY
     vec3 transmittance;
+    float translucencyIntensity;
     #ifdef REFLECTION
         vec3 refractionIrradiance;
     #endif
@@ -42,6 +43,10 @@ struct subSurfaceOutParams
             #ifdef USESPHERICALFROMREFLECTIONMAP
                 #if !defined(NORMAL) || !defined(USESPHERICALINVERTEX)
                     const in vec3 irradianceVector_,
+                #endif
+                #if defined(REALTIME_FILTERING)
+                    const in samplerCube reflectionSampler,
+                    const in vec2 vReflectionFilteringInfo,
                 #endif
             #endif
             #ifdef USEIRRADIANCEMAP
@@ -89,6 +94,9 @@ struct subSurfaceOutParams
         #ifdef ANISOTROPIC
             const in anisotropicOutParams anisotropicOut,
         #endif
+        #ifdef REALTIME_FILTERING
+            const in vec2 vRefractionFilteringInfo,
+        #endif
     #endif
     #ifdef SS_TRANSLUCENCY
         const in vec3 vDiffusionDistance,
@@ -112,9 +120,6 @@ struct subSurfaceOutParams
     #ifdef SS_TRANSLUCENCY
         float translucencyIntensity = vSubSurfaceIntensity.y;
     #endif
-    #ifdef SS_SCATTERING
-        float scatteringIntensity = vSubSurfaceIntensity.z;
-    #endif
 
     #ifdef SS_THICKNESSANDMASK_TEXTURE
         float thickness = thicknessMap.r * vThicknessParam.y + vThicknessParam.x;
@@ -130,9 +135,13 @@ struct subSurfaceOutParams
             #ifdef SS_TRANSLUCENCY
                 translucencyIntensity *= thicknessMap.b;
             #endif
-            #ifdef SS_SCATTERING
-                scatteringIntensity *= thicknessMap.a;
+        #elif defined(SS_MASK_FROM_THICKNESS_TEXTURE_GLTF)
+            #ifdef SS_REFRACTION
+                refractionIntensity *= thicknessMap.r;
+            #elif defined(SS_TRANSLUCENCY)
+                translucencyIntensity *= thicknessMap.r;
             #endif
+            thickness = thicknessMap.g * vThicknessParam.y + vThicknessParam.x;
         #endif
     #else
         float thickness = vThicknessParam.y;
@@ -146,6 +155,7 @@ struct subSurfaceOutParams
         vec3 transmittance = transmittanceBRDF_Burley(vTintColor.rgb, vDiffusionDistance, thickness);
         transmittance *= translucencyIntensity;
         outParams.transmittance = transmittance;
+        outParams.translucencyIntensity = translucencyIntensity;
     #endif
 
     // _____________________________________________________________________________________

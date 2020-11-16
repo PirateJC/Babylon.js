@@ -52,7 +52,24 @@ config.additionalNpmPackages.forEach(package => {
     };
 });
 
+const allModules = [];
+config.modules.map(function(module) {
+    if (allModules.indexOf(module) === -1) {
+        allModules.push(module);
+    }
+});
 config.es6modules.map(function(module) {
+    if (allModules.indexOf(module) === -1) {
+        allModules.push(module);
+    }
+});
+config.apps.map(function(module) {
+    if (allModules.indexOf(module) === -1) {
+        allModules.push(module);
+    }
+});
+
+allModules.map(function(module) {
     const settings = config[module];
 
     const mainDirectory = path.resolve(rootFolder, settings.build.mainFolder);
@@ -60,6 +77,7 @@ config.es6modules.map(function(module) {
     const distDirectory = path.join(outputFolder, distFolder);
     const localDevES6Directory = path.join(localDevES6Folder, module);
     const localDevUMDDirectory = path.join(localDevUMDFolder, distFolder);
+    const localDevAppDirectory = path.join(localDevUMDFolder, module);
     const packageUMDDirectory = path.join(packageUMDFolder, module);
     const packageUMDDevDirectory = path.join(packageUMDDevFolder, module);
     const sourceES6Directory = path.join(sourceES6Folder, module);
@@ -78,6 +96,7 @@ config.es6modules.map(function(module) {
         distDirectory,
         localDevES6Directory,
         localDevUMDDirectory,
+        localDevAppDirectory,
         packageUMDDirectory,
         packageUMDDevDirectory,
         sourceES6Directory,
@@ -102,13 +121,15 @@ config.es6modules.map(function(module) {
         ];
         const tsGlob = srcDirectory.replace(/\\/g, "/") + "/**/*.ts*";
 
-        for (let library of settings.libraries) {
-            if(library.entry){
-                const entryPath = path.join(srcDirectory, library.entry);
+        if (settings.libraries) {
+            for (let library of settings.libraries) {
+                if(library.entry){
+                    const entryPath = path.join(srcDirectory, library.entry);
 
-                library.computed = {
-                    entryPath
-                };
+                    library.computed = {
+                        entryPath
+                    };
+                }
             }
         }
 

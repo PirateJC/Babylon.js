@@ -17,17 +17,19 @@ import { DataBuffer } from '../Meshes/dataBuffer';
 import { IFileRequest } from '../Misc/fileRequest';
 import { Logger } from '../Misc/logger';
 import { DomManagement } from '../Misc/domManagement';
+import { WebGLShaderProcessor } from './WebGL/webGLShaderProcessors';
 import { WebGL2ShaderProcessor } from './WebGL/webGL2ShaderProcessors';
 import { WebGLDataBuffer } from '../Meshes/WebGL/webGLDataBuffer';
 import { IPipelineContext } from './IPipelineContext';
 import { WebGLPipelineContext } from './WebGL/webGLPipelineContext';
 import { VertexBuffer } from '../Meshes/buffer';
 import { InstancingAttributeInfo } from './instancingAttributeInfo';
-import { BaseTexture } from '../Materials/Textures/baseTexture';
+import { ThinTexture } from '../Materials/Textures/thinTexture';
 import { IOfflineProvider } from '../Offline/IOfflineProvider';
 import { IEffectFallbacks } from '../Materials/iEffectFallbacks';
 import { IWebRequest } from '../Misc/interfaces/iWebRequest';
 import { CanvasGenerator } from '../Misc/canvasGenerator';
+import { PerformanceConfigurator } from './performanceConfigurator';
 
 declare type WebRequest = import("../Misc/webRequest").WebRequest;
 declare type LoadFileError = import("../Misc/fileTools").LoadFileError;
@@ -60,6 +62,16 @@ class BufferPointer {
     public buffer: WebGLBuffer;
 }
 
+/**
+ * Information about the current host
+ */
+export interface HostInformation {
+    /**
+     * Defines if the current host is a mobile
+     */
+    isMobile: boolean;
+}
+
 /** Interface defining initialization parameters for Engine class */
 export interface EngineOptions extends WebGLContextAttributes {
     /**
@@ -69,22 +81,22 @@ export interface EngineOptions extends WebGLContextAttributes {
     limitDeviceRatio?: number;
     /**
      * Defines if webvr should be enabled automatically
-     * @see http://doc.babylonjs.com/how_to/webvr_camera
+     * @see https://doc.babylonjs.com/how_to/webvr_camera
      */
     autoEnableWebVR?: boolean;
     /**
      * Defines if webgl2 should be turned off even if supported
-     * @see http://doc.babylonjs.com/features/webgl2
+     * @see https://doc.babylonjs.com/features/webgl2
      */
     disableWebGL2Support?: boolean;
     /**
      * Defines if webaudio should be initialized as well
-     * @see http://doc.babylonjs.com/how_to/playing_sounds_and_music
+     * @see https://doc.babylonjs.com/how_to/playing_sounds_and_music
      */
     audioEngine?: boolean;
     /**
      * Defines if animations should run using a deterministic lock step
-     * @see http://doc.babylonjs.com/babylon101/animations#deterministic-lockstep
+     * @see https://doc.babylonjs.com/babylon101/animations#deterministic-lockstep
      */
     deterministicLockstep?: boolean;
     /** Defines the maximum steps to use with deterministic lock step mode */
@@ -110,6 +122,16 @@ export interface EngineOptions extends WebGLContextAttributes {
      * Make the canvas XR Compatible for XR sessions
      */
     xrCompatible?: boolean;
+
+    /**
+     * Make the matrix computations to be performed in 64 bits instead of 32 bits. False by default
+     */
+    useHighPrecisionMatrix?: boolean;
+
+    /**
+     * Will prevent the system from falling back to software implementation if a hardware device cannot be created
+     */
+    failIfMajorPerformanceCaveat?: boolean;
 }
 
 /**
@@ -136,14 +158,14 @@ export class ThinEngine {
      */
     // Not mixed with Version for tooling purpose.
     public static get NpmPackage(): string {
-        return "babylonjs@4.2.0-alpha.19";
+        return "babylonjs@5.0.0-alpha.0";
     }
 
     /**
      * Returns the current version of the framework
      */
     public static get Version(): string {
-        return "4.2.0-alpha.19";
+        return "5.0.0-alpha.0";
     }
 
     /**
@@ -226,7 +248,7 @@ export class ThinEngine {
 
     /**
      * Gets a boolean indicating that the engine supports uniform buffers
-     * @see http://doc.babylonjs.com/features/webgl2#uniform-buffer-objets
+     * @see https://doc.babylonjs.com/features/webgl2#uniform-buffer-objets
      */
     public get supportsUniformBuffers(): boolean {
         return this.webGLVersion > 1 && !this.disableUniformBuffers;
@@ -295,7 +317,7 @@ export class ThinEngine {
 
     /**
      * Gets or sets a boolean indicating if resources should be retained to be able to handle context lost events
-     * @see http://doc.babylonjs.com/how_to/optimizing_your_scene#handling-webgl-context-lost
+     * @see https://doc.babylonjs.com/how_to/optimizing_your_scene#handling-webgl-context-lost
      */
     public get doNotHandleContextLost(): boolean {
         return this._doNotHandleContextLost;
@@ -389,6 +411,13 @@ export class ThinEngine {
     /** @hidden */
     public _transformTextureUrl: Nullable<(url: string) => string> = null;
 
+    /**
+     * Gets information about the current host
+     */
+    public hostInformation: HostInformation = {
+        isMobile: false
+    };
+
     protected get _supportsHardwareTextureRescaling() {
         return false;
     }
@@ -474,7 +503,7 @@ export class ThinEngine {
      * @param options defines further options to be sent to the getContext() function
      * @param adaptToDeviceRatio defines whether to adapt to the device's viewport characteristics (default: false)
      */
-    constructor(canvasOrContext: Nullable<HTMLCanvasElement | WebGLRenderingContext | WebGL2RenderingContext>, antialias?: boolean, options?: EngineOptions, adaptToDeviceRatio: boolean = false) {
+    constructor(canvasOrContext: Nullable<HTMLCanvasElement | OffscreenCanvas | WebGLRenderingContext | WebGL2RenderingContext>, antialias?: boolean, options?: EngineOptions, adaptToDeviceRatio: boolean = false) {
 
         let canvas: Nullable<HTMLCanvasElement> = null;
 
@@ -483,6 +512,8 @@ export class ThinEngine {
         }
 
         options = options || {};
+
+        PerformanceConfigurator.SetMatrixPrecision(!!options.useHighPrecisionMatrix);
 
         if ((canvasOrContext as any).getContext) {
             canvas = <HTMLCanvasElement>canvasOrContext;
@@ -529,6 +560,8 @@ export class ThinEngine {
             // Exceptions
             if (navigator && navigator.userAgent) {
                 let ua = navigator.userAgent;
+
+                this.hostInformation.isMobile = ua.indexOf("Mobile") !== -1;
 
                 for (var exception of ThinEngine.ExceptionList) {
                     let key = exception.key;
@@ -670,10 +703,21 @@ export class ThinEngine {
         // Shader processor
         if (this.webGLVersion > 1) {
             this._shaderProcessor = new WebGL2ShaderProcessor();
+        } else {
+            this._shaderProcessor = new WebGLShaderProcessor();
         }
 
         // Detect if we are running on a faulty buggy OS.
         this._badOS = /iPad/i.test(navigator.userAgent) || /iPhone/i.test(navigator.userAgent);
+
+        // Starting with iOS 14, we can trust the browser
+        // let matches = navigator.userAgent.match(/Version\/(\d+)/);
+
+        // if (matches && matches.length === 2) {
+        //     if (parseInt(matches[1]) >= 14) {
+        //         this._badOS = false;
+        //     }
+        // }
 
         // Detect if we are running on a faulty buggy desktop OS.
         this._badDesktopOS = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
@@ -741,6 +785,7 @@ export class ThinEngine {
             standardDerivatives: this._webGLVersion > 1 || (this._gl.getExtension('OES_standard_derivatives') !== null),
             maxAnisotropy: 1,
             astc: this._gl.getExtension('WEBGL_compressed_texture_astc') || this._gl.getExtension('WEBKIT_WEBGL_compressed_texture_astc'),
+            bptc: this._gl.getExtension('EXT_texture_compression_bptc') || this._gl.getExtension('WEBKIT_EXT_texture_compression_bptc'),
             s3tc: this._gl.getExtension('WEBGL_compressed_texture_s3tc') || this._gl.getExtension('WEBKIT_WEBGL_compressed_texture_s3tc'),
             pvrtc: this._gl.getExtension('WEBGL_compressed_texture_pvrtc') || this._gl.getExtension('WEBKIT_WEBGL_compressed_texture_pvrtc'),
             etc1: this._gl.getExtension('WEBGL_compressed_texture_etc1') || this._gl.getExtension('WEBKIT_WEBGL_compressed_texture_etc1'),
@@ -924,7 +969,7 @@ export class ThinEngine {
     }
 
     /**
-     * Gets a string idenfifying the name of the class
+     * Gets a string identifying the name of the class
      * @returns "Engine" string
      */
     public getClassName(): string {
@@ -1153,6 +1198,7 @@ export class ThinEngine {
             this._gl.clearColor(color.r, color.g, color.b, color.a !== undefined ? color.a : 1.0);
             mode |= this._gl.COLOR_BUFFER_BIT;
         }
+
         if (depth) {
             if (this.useReverseDepthBuffer) {
                 this._depthCullingState.depthFunc = this._gl.GREATER;
@@ -1241,21 +1287,24 @@ export class ThinEngine {
      * Force a specific size of the canvas
      * @param width defines the new canvas' width
      * @param height defines the new canvas' height
+     * @returns true if the size was changed
      */
-    public setSize(width: number, height: number): void {
+    public setSize(width: number, height: number): boolean {
         if (!this._renderingCanvas) {
-            return;
+            return false;
         }
 
         width = width | 0;
         height = height | 0;
 
         if (this._renderingCanvas.width === width && this._renderingCanvas.height === height) {
-            return;
+            return false;
         }
 
         this._renderingCanvas.width = width;
         this._renderingCanvas.height = height;
+
+        return true;
     }
 
     /**
@@ -1338,8 +1387,12 @@ export class ThinEngine {
 
         // If MSAA, we need to bitblt back to main texture
         var gl = this._gl;
-
         if (texture._MSAAFramebuffer) {
+            if (texture._textureArray) {
+                // This texture is part of a MRT texture, we need to treat all attachments
+                this.unBindMultiColorAttachmentFramebuffer(texture._textureArray!, disableGenerateMipMaps, onBeforeUnbind);
+                return;
+            }
             gl.bindFramebuffer(gl.READ_FRAMEBUFFER, texture._MSAAFramebuffer);
             gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, texture._framebuffer);
             gl.blitFramebuffer(0, 0, texture.width, texture.height,
@@ -1538,6 +1591,9 @@ export class ThinEngine {
 
     private _vertexAttribPointer(buffer: DataBuffer, indx: number, size: number, type: number, normalized: boolean, stride: number, offset: number): void {
         var pointer = this._currentBufferPointers[indx];
+        if (!pointer) {
+            return;
+        }
 
         var changed = false;
         if (!pointer.active) {
@@ -1619,7 +1675,7 @@ export class ThinEngine {
 
     /**
      * Records a vertex array object
-     * @see http://doc.babylonjs.com/features/webgl2#vertex-array-objects
+     * @see https://doc.babylonjs.com/features/webgl2#vertex-array-objects
      * @param vertexBuffers defines the list of vertex buffers to store
      * @param indexBuffer defines the index buffer to store
      * @param effect defines the effect to store
@@ -1645,7 +1701,7 @@ export class ThinEngine {
 
     /**
      * Bind a specific vertex array object
-     * @see http://doc.babylonjs.com/features/webgl2#vertex-array-objects
+     * @see https://doc.babylonjs.com/features/webgl2#vertex-array-objects
      * @param vertexArrayObject defines the vertex array object to bind
      * @param indexBuffer defines the index buffer to bind
      */
@@ -2030,8 +2086,8 @@ export class ThinEngine {
     public createEffect(baseName: any, attributesNamesOrOptions: string[] | IEffectCreationOptions, uniformsNamesOrEngine: string[] | ThinEngine, samplers?: string[], defines?: string,
         fallbacks?: IEffectFallbacks,
         onCompiled?: Nullable<(effect: Effect) => void>, onError?: Nullable<(effect: Effect, errors: string) => void>, indexParameters?: any): Effect {
-        var vertex = baseName.vertexElement || baseName.vertex || baseName.vertexToken || baseName;
-        var fragment = baseName.fragmentElement || baseName.fragment || baseName.fragmentToken || baseName;
+        var vertex = baseName.vertexElement || baseName.vertex || baseName.vertexToken || baseName.vertexSource || baseName;
+        var fragment = baseName.fragmentElement || baseName.fragment || baseName.fragmentToken || baseName.fragmentSource || baseName;
 
         var name = vertex + "+" + fragment + "@" + (defines ? defines : (<IEffectCreationOptions>attributesNamesOrOptions).defines);
         if (this._compiledEffects[name]) {
@@ -2323,169 +2379,198 @@ export class ThinEngine {
      * Set the value of an uniform to a number (int)
      * @param uniform defines the webGL uniform location where to store the value
      * @param value defines the int number to store
+     * @returns true if the value was set
      */
-    public setInt(uniform: Nullable<WebGLUniformLocation>, value: number): void {
+    public setInt(uniform: Nullable<WebGLUniformLocation>, value: number): boolean {
         if (!uniform) {
-            return;
+            return false;
         }
 
         this._gl.uniform1i(uniform, value);
+
+        return true;
     }
 
     /**
      * Set the value of an uniform to an array of int32
      * @param uniform defines the webGL uniform location where to store the value
      * @param array defines the array of int32 to store
+     * @returns true if the value was set
      */
-    public setIntArray(uniform: Nullable<WebGLUniformLocation>, array: Int32Array): void {
+    public setIntArray(uniform: Nullable<WebGLUniformLocation>, array: Int32Array): boolean {
         if (!uniform) {
-            return;
+            return false;
         }
 
         this._gl.uniform1iv(uniform, array);
+
+        return true;
     }
 
     /**
      * Set the value of an uniform to an array of int32 (stored as vec2)
      * @param uniform defines the webGL uniform location where to store the value
      * @param array defines the array of int32 to store
+     * @returns true if the value was set
      */
-    public setIntArray2(uniform: Nullable<WebGLUniformLocation>, array: Int32Array): void {
+    public setIntArray2(uniform: Nullable<WebGLUniformLocation>, array: Int32Array): boolean {
         if (!uniform || array.length % 2 !== 0) {
-            return;
+            return false;
         }
 
         this._gl.uniform2iv(uniform, array);
+        return true;
     }
 
     /**
      * Set the value of an uniform to an array of int32 (stored as vec3)
      * @param uniform defines the webGL uniform location where to store the value
      * @param array defines the array of int32 to store
+     * @returns true if the value was set
      */
-    public setIntArray3(uniform: Nullable<WebGLUniformLocation>, array: Int32Array): void {
+    public setIntArray3(uniform: Nullable<WebGLUniformLocation>, array: Int32Array): boolean {
         if (!uniform || array.length % 3 !== 0) {
-            return;
+            return false;
         }
 
         this._gl.uniform3iv(uniform, array);
+        return true;
     }
 
     /**
      * Set the value of an uniform to an array of int32 (stored as vec4)
      * @param uniform defines the webGL uniform location where to store the value
      * @param array defines the array of int32 to store
+     * @returns true if the value was set
      */
-    public setIntArray4(uniform: Nullable<WebGLUniformLocation>, array: Int32Array): void {
+    public setIntArray4(uniform: Nullable<WebGLUniformLocation>, array: Int32Array): boolean {
         if (!uniform || array.length % 4 !== 0) {
-            return;
+            return false;
         }
 
         this._gl.uniform4iv(uniform, array);
+        return true;
     }
 
     /**
      * Set the value of an uniform to an array of number
      * @param uniform defines the webGL uniform location where to store the value
      * @param array defines the array of number to store
+     * @returns true if the value was set
      */
-    public setArray(uniform: Nullable<WebGLUniformLocation>, array: number[] | Float32Array): void {
+    public setArray(uniform: Nullable<WebGLUniformLocation>, array: number[] | Float32Array): boolean {
         if (!uniform) {
-            return;
+            return false;
         }
 
         this._gl.uniform1fv(uniform, array);
+        return true;
     }
 
     /**
      * Set the value of an uniform to an array of number (stored as vec2)
      * @param uniform defines the webGL uniform location where to store the value
      * @param array defines the array of number to store
+     * @returns true if the value was set
      */
-    public setArray2(uniform: Nullable<WebGLUniformLocation>, array: number[] | Float32Array): void {
+    public setArray2(uniform: Nullable<WebGLUniformLocation>, array: number[] | Float32Array): boolean {
         if (!uniform || array.length % 2 !== 0) {
-            return;
+            return false;
         }
 
         this._gl.uniform2fv(uniform, <any>array);
+        return true;
     }
 
     /**
      * Set the value of an uniform to an array of number (stored as vec3)
      * @param uniform defines the webGL uniform location where to store the value
      * @param array defines the array of number to store
+     * @returns true if the value was set
      */
-    public setArray3(uniform: Nullable<WebGLUniformLocation>, array: number[] | Float32Array): void {
+    public setArray3(uniform: Nullable<WebGLUniformLocation>, array: number[] | Float32Array): boolean {
         if (!uniform || array.length % 3 !== 0) {
-            return;
+            return false;
         }
 
         this._gl.uniform3fv(uniform, <any>array);
+        return true;
     }
 
     /**
      * Set the value of an uniform to an array of number (stored as vec4)
      * @param uniform defines the webGL uniform location where to store the value
      * @param array defines the array of number to store
+     * @returns true if the value was set
      */
-    public setArray4(uniform: Nullable<WebGLUniformLocation>, array: number[] | Float32Array): void {
+    public setArray4(uniform: Nullable<WebGLUniformLocation>, array: number[] | Float32Array): boolean {
         if (!uniform || array.length % 4 !== 0) {
-            return;
+            return false;
         }
 
         this._gl.uniform4fv(uniform, <any>array);
+        return true;
     }
 
     /**
      * Set the value of an uniform to an array of float32 (stored as matrices)
      * @param uniform defines the webGL uniform location where to store the value
      * @param matrices defines the array of float32 to store
+     * @returns true if the value was set
      */
-    public setMatrices(uniform: Nullable<WebGLUniformLocation>, matrices: Float32Array): void {
+    public setMatrices(uniform: Nullable<WebGLUniformLocation>, matrices: Float32Array): boolean {
         if (!uniform) {
-            return;
+            return false;
         }
 
         this._gl.uniformMatrix4fv(uniform, false, matrices);
+        return true;
     }
 
     /**
      * Set the value of an uniform to a matrix (3x3)
      * @param uniform defines the webGL uniform location where to store the value
      * @param matrix defines the Float32Array representing the 3x3 matrix to store
+     * @returns true if the value was set
      */
-    public setMatrix3x3(uniform: Nullable<WebGLUniformLocation>, matrix: Float32Array): void {
+    public setMatrix3x3(uniform: Nullable<WebGLUniformLocation>, matrix: Float32Array): boolean {
         if (!uniform) {
-            return;
+            return false;
         }
 
         this._gl.uniformMatrix3fv(uniform, false, matrix);
+        return true;
     }
 
     /**
      * Set the value of an uniform to a matrix (2x2)
      * @param uniform defines the webGL uniform location where to store the value
      * @param matrix defines the Float32Array representing the 2x2 matrix to store
+     * @returns true if the value was set
      */
-    public setMatrix2x2(uniform: Nullable<WebGLUniformLocation>, matrix: Float32Array): void {
+    public setMatrix2x2(uniform: Nullable<WebGLUniformLocation>, matrix: Float32Array): boolean {
         if (!uniform) {
-            return;
+            return false;
         }
 
         this._gl.uniformMatrix2fv(uniform, false, matrix);
+        return true;
     }
 
     /**
      * Set the value of an uniform to a number (float)
      * @param uniform defines the webGL uniform location where to store the value
      * @param value defines the float number to store
+     * @returns true if the value was transfered
      */
-    public setFloat(uniform: Nullable<WebGLUniformLocation>, value: number): void {
+    public setFloat(uniform: Nullable<WebGLUniformLocation>, value: number): boolean {
         if (!uniform) {
-            return;
+            return false;
         }
 
         this._gl.uniform1f(uniform, value);
+
+        return true;
     }
 
     /**
@@ -2493,13 +2578,16 @@ export class ThinEngine {
      * @param uniform defines the webGL uniform location where to store the value
      * @param x defines the 1st component of the value
      * @param y defines the 2nd component of the value
+     * @returns true if the value was set
      */
-    public setFloat2(uniform: Nullable<WebGLUniformLocation>, x: number, y: number): void {
+    public setFloat2(uniform: Nullable<WebGLUniformLocation>, x: number, y: number): boolean {
         if (!uniform) {
-            return;
+            return false;
         }
 
         this._gl.uniform2f(uniform, x, y);
+
+        return true;
     }
 
     /**
@@ -2508,13 +2596,16 @@ export class ThinEngine {
      * @param x defines the 1st component of the value
      * @param y defines the 2nd component of the value
      * @param z defines the 3rd component of the value
+     * @returns true if the value was set
      */
-    public setFloat3(uniform: Nullable<WebGLUniformLocation>, x: number, y: number, z: number): void {
+    public setFloat3(uniform: Nullable<WebGLUniformLocation>, x: number, y: number, z: number): boolean {
         if (!uniform) {
-            return;
+            return false;
         }
 
         this._gl.uniform3f(uniform, x, y, z);
+
+        return true;
     }
 
     /**
@@ -2524,13 +2615,16 @@ export class ThinEngine {
      * @param y defines the 2nd component of the value
      * @param z defines the 3rd component of the value
      * @param w defines the 4th component of the value
+     * @returns true if the value was set
      */
-    public setFloat4(uniform: Nullable<WebGLUniformLocation>, x: number, y: number, z: number, w: number): void {
+    public setFloat4(uniform: Nullable<WebGLUniformLocation>, x: number, y: number, z: number, w: number): boolean {
         if (!uniform) {
-            return;
+            return false;
         }
 
         this._gl.uniform4f(uniform, x, y, z, w);
+
+        return true;
     }
 
     // States
@@ -2773,12 +2867,13 @@ export class ThinEngine {
      * @param format internal format.  Default: RGB when extension is '.jpg' else RGBA.  Ignored for compressed textures
      * @param forcedExtension defines the extension to use to pick the right loader
      * @param mimeType defines an optional mime type
+     * @param loaderOptions options to be passed to the loader
      * @returns a InternalTexture for assignment back into BABYLON.Texture
      */
     public createTexture(url: Nullable<string>, noMipmap: boolean, invertY: boolean, scene: Nullable<ISceneLike>, samplingMode: number = Constants.TEXTURE_TRILINEAR_SAMPLINGMODE,
         onLoad: Nullable<() => void> = null, onError: Nullable<(message: string, exception: any) => void> = null,
         buffer: Nullable<string | ArrayBuffer | ArrayBufferView | HTMLImageElement | Blob | ImageBitmap> = null, fallback: Nullable<InternalTexture> = null, format: Nullable<number> = null,
-        forcedExtension: Nullable<string> = null, mimeType?: string): InternalTexture {
+        forcedExtension: Nullable<string> = null, mimeType?: string, loaderOptions?: any): InternalTexture {
         url = url || "";
         const fromData = url.substr(0, 5) === "data:";
         const fromBlob = url.substr(0, 5) === "blob:";
@@ -2791,13 +2886,24 @@ export class ThinEngine {
             url = this._transformTextureUrl(url);
         }
 
+        if (originalUrl !== url) {
+            texture._originalUrl = originalUrl;
+        }
+
         // establish the file extension, if possible
         const lastDot = url.lastIndexOf('.');
-        const extension = forcedExtension ? forcedExtension : (lastDot > -1 ? url.substring(lastDot).toLowerCase() : "");
+        let extension = forcedExtension ? forcedExtension : (lastDot > -1 ? url.substring(lastDot).toLowerCase() : "");
         let loader: Nullable<IInternalTextureLoader> = null;
 
-        for (let availableLoader of ThinEngine._TextureLoaders) {
-            if (availableLoader.canLoad(extension)) {
+        // Remove query string
+        let queryStringIndex = extension.indexOf("?");
+
+        if (queryStringIndex > -1) {
+            extension = extension.split("?")[0];
+        }
+
+        for (const availableLoader of ThinEngine._TextureLoaders) {
+            if (availableLoader.canLoad(extension, mimeType)) {
                 loader = availableLoader;
                 break;
             }
@@ -2844,7 +2950,7 @@ export class ThinEngine {
             else {
                 // fall back to the original url if the transformed url fails to load
                 Logger.Warn(`Failed to load ${url}, falling back to ${originalUrl}`);
-                this.createTexture(originalUrl, noMipmap, texture.invertY, scene, samplingMode, onLoad, onError, buffer, texture, format, forcedExtension, mimeType);
+                this.createTexture(originalUrl, noMipmap, texture.invertY, scene, samplingMode, onLoad, onError, buffer, texture, format, forcedExtension, mimeType, loaderOptions);
             }
         };
 
@@ -2860,7 +2966,7 @@ export class ThinEngine {
                             return false;
                         }, samplingMode);
                     }
-                });
+                }, loaderOptions);
             };
 
             if (!buffer) {
@@ -3514,7 +3620,7 @@ export class ThinEngine {
      * @param uniform The uniform to set
      * @param texture The texture to apply
      */
-    public setTexture(channel: number, uniform: Nullable<WebGLUniformLocation>, texture: Nullable<BaseTexture>): void {
+    public setTexture(channel: number, uniform: Nullable<WebGLUniformLocation>, texture: Nullable<ThinTexture>): void {
         if (channel === undefined) {
             return;
         }
@@ -3547,7 +3653,7 @@ export class ThinEngine {
         return this._gl.REPEAT;
     }
 
-    protected _setTexture(channel: number, texture: Nullable<BaseTexture>, isPartOfTextureArray = false, depthStencilTexture = false): boolean {
+    protected _setTexture(channel: number, texture: Nullable<ThinTexture>, isPartOfTextureArray = false, depthStencilTexture = false): boolean {
         // Not ready?
         if (!texture) {
             if (this._boundTexturesCache[channel] != null) {
@@ -3647,7 +3753,7 @@ export class ThinEngine {
      * @param uniform defines the associated uniform location
      * @param textures defines the array of textures to bind
      */
-    public setTextureArray(channel: number, uniform: Nullable<WebGLUniformLocation>, textures: BaseTexture[]): void {
+    public setTextureArray(channel: number, uniform: Nullable<WebGLUniformLocation>, textures: ThinTexture[]): void {
         if (channel === undefined || !uniform) {
             return;
         }
@@ -4214,25 +4320,56 @@ export class ThinEngine {
 
     // Statics
 
-    private static _isSupported: Nullable<boolean> = null;
+    private static _IsSupported: Nullable<boolean> = null;
+    private static _HasMajorPerformanceCaveat : Nullable<boolean> = null;
+
+    /**
+     * Gets a boolean indicating if the engine can be instanciated (ie. if a webGL context can be found)
+     */
+    public static get IsSupported(): boolean {
+        return this.isSupported(); // Backward compat
+    }
+
     /**
      * Gets a boolean indicating if the engine can be instanciated (ie. if a webGL context can be found)
      * @returns true if the engine can be created
      * @ignorenaming
      */
     public static isSupported(): boolean {
-        if (this._isSupported === null) {
+        if (this._HasMajorPerformanceCaveat !== null) {
+            return !this._HasMajorPerformanceCaveat; // We know it is performant so WebGL is supported
+        }
+
+        if (this._IsSupported === null) {
             try {
                 var tempcanvas = CanvasGenerator.CreateCanvas(1, 1);
                 var gl = tempcanvas.getContext("webgl") || (tempcanvas as any).getContext("experimental-webgl");
 
-                this._isSupported = gl != null && !!window.WebGLRenderingContext;
+                this._IsSupported = gl != null && !!window.WebGLRenderingContext;
             } catch (e) {
-                this._isSupported = false;
+                this._IsSupported = false;
             }
         }
 
-        return this._isSupported;
+        return this._IsSupported;
+    }
+
+    /**
+     * Gets a boolean indicating if the engine can be instanciated on a performant device (ie. if a webGL context can be found and it does not use a slow implementation)
+     */
+    public static get HasMajorPerformanceCaveat(): boolean {
+        if (this._HasMajorPerformanceCaveat === null) {
+            try {
+                var tempcanvas = CanvasGenerator.CreateCanvas(1, 1);
+                var gl = tempcanvas.getContext("webgl", { failIfMajorPerformanceCaveat: true }) || (tempcanvas as any).getContext("experimental-webgl", { failIfMajorPerformanceCaveat: true });
+
+                this._HasMajorPerformanceCaveat = !gl;
+            } catch (e) {
+                this._HasMajorPerformanceCaveat = false;
+            }
+        }
+
+        return this._HasMajorPerformanceCaveat;
     }
 
     /**

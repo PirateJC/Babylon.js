@@ -156,6 +156,8 @@ export class AssetContainer extends AbstractScene {
                                             convertionMap[material.uniqueId] = swap.uniqueId;
                                             storeMap[swap.uniqueId] = swap;
                                         }
+
+                                        multi.subMaterials = multi.subMaterials.map((m) => m && storeMap[convertionMap[m.uniqueId]]);
                                     }
                                 }
 
@@ -454,6 +456,8 @@ export class AssetContainer extends AbstractScene {
                 this._moveAssets((<any>this.scene)[key], (<any>this)[key], (<any>keepAssets)[key]);
             }
         }
+
+        this.environmentTexture = this.scene.environmentTexture;
 
         this.removeAllFromScene();
     }

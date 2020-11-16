@@ -64,7 +64,7 @@ export interface IShaderMaterialOptions {
  *
  * This returned material effects how the mesh will look based on the code in the shaders.
  *
- * @see http://doc.babylonjs.com/how_to/shader_material
+ * @see https://doc.babylonjs.com/how_to/shader_material
  */
 export class ShaderMaterial extends Material {
     private _shaderPath: any;
@@ -82,9 +82,9 @@ export class ShaderMaterial extends Material {
     private _vectors3: { [name: string]: Vector3 } = {};
     private _vectors4: { [name: string]: Vector4 } = {};
     private _matrices: { [name: string]: Matrix } = {};
-    private _matrixArrays: { [name: string]: Float32Array } = {};
-    private _matrices3x3: { [name: string]: Float32Array } = {};
-    private _matrices2x2: { [name: string]: Float32Array } = {};
+    private _matrixArrays: { [name: string]: Float32Array | Array<number> } = {};
+    private _matrices3x3: { [name: string]: Float32Array | Array<number> } = {};
+    private _matrices2x2: { [name: string]: Float32Array | Array<number> } = {};
     private _vectors2Arrays: { [name: string]: number[] } = {};
     private _vectors3Arrays: { [name: string]: number[] } = {};
     private _vectors4Arrays: { [name: string]: number[] } = {};
@@ -104,7 +104,7 @@ export class ShaderMaterial extends Material {
      * Instantiate a new shader material.
      * The ShaderMaterial object has the necessary methods to pass data from your scene to the Vertex and Fragment Shaders and returns a material that can be applied to any mesh.
      * This returned material effects how the mesh will look based on the code in the shaders.
-     * @see http://doc.babylonjs.com/how_to/shader_material
+     * @see https://doc.babylonjs.com/how_to/shader_material
      * @param name Define the name of the material in the scene
      * @param scene Define the scene the material belongs to
      * @param shaderPath Defines  the route to the shader code in one of three ways:
@@ -393,7 +393,7 @@ export class ShaderMaterial extends Material {
      * @param value Define the value to give to the uniform
      * @return the material itself allowing "fluent" like uniform updates
      */
-    public setMatrix3x3(name: string, value: Float32Array): ShaderMaterial {
+    public setMatrix3x3(name: string, value: Float32Array | Array<number>): ShaderMaterial {
         this._checkUniform(name);
         this._matrices3x3[name] = value;
 
@@ -406,7 +406,7 @@ export class ShaderMaterial extends Material {
      * @param value Define the value to give to the uniform
      * @return the material itself allowing "fluent" like uniform updates
      */
-    public setMatrix2x2(name: string, value: Float32Array): ShaderMaterial {
+    public setMatrix2x2(name: string, value: Float32Array | Array<number>): ShaderMaterial {
         this._checkUniform(name);
         this._matrices2x2[name] = value;
 
@@ -540,7 +540,6 @@ export class ShaderMaterial extends Material {
 
         // Bones
         let numInfluencers = 0;
-
         if (mesh && mesh.useBones && mesh.computeBonesUsingShaders && mesh.skeleton) {
             attribs.push(VertexBuffer.MatricesIndicesKind);
             attribs.push(VertexBuffer.MatricesWeightsKind);
@@ -552,7 +551,6 @@ export class ShaderMaterial extends Material {
             const skeleton = mesh.skeleton;
 
             numInfluencers = mesh.numBoneInfluencers;
-
             defines.push("#define NUM_BONE_INFLUENCERS " + numInfluencers);
             fallbacks.addCPUSkinningFallback(0, mesh);
 
@@ -573,7 +571,6 @@ export class ShaderMaterial extends Material {
                     this._options.uniforms.push("mBones");
                 }
             }
-
         } else {
             defines.push("#define NUM_BONE_INFLUENCERS 0");
         }

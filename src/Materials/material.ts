@@ -21,6 +21,7 @@ import { IInspectable } from '../Misc/iInspectable';
 import { Plane } from '../Maths/math.plane';
 import { ShadowDepthWrapper } from './shadowDepthWrapper';
 
+declare type PrePassRenderer = import("../Rendering/prePassRenderer").PrePassRenderer;
 declare type Mesh = import("../Meshes/mesh").Mesh;
 declare type Animation = import("../Animations/animation").Animation;
 declare type InstancedMesh = import('../Meshes/instancedMesh').InstancedMesh;
@@ -129,6 +130,11 @@ export class Material implements IAnimatable {
     public static readonly MiscDirtyFlag = Constants.MATERIAL_MiscDirtyFlag;
 
     /**
+     * The dirty prepass flag value
+     */
+    public static readonly PrePassDirtyFlag = Constants.MATERIAL_PrePassDirtyFlag;
+
+    /**
      * The all dirty flag value
      */
     public static readonly AllDirtyFlag = Constants.MATERIAL_AllDirtyFlag;
@@ -228,6 +234,15 @@ export class Material implements IAnimatable {
      */
     @serialize()
     public state = "";
+
+    /**
+     * If the material can be rendered to several textures with MRT extension
+     */
+    public get canRenderToMRT() : boolean {
+        // By default, shaders are not compatible with MRTs
+        // Base classes should override that if their shader supports MRT
+        return false;
+    }
 
     /**
      * The alpha value of the material
@@ -645,9 +660,14 @@ export class Material implements IAnimatable {
      */
     constructor(name: string, scene: Scene, doNotAdd?: boolean) {
         this.name = name;
-        this.id = name || Tools.RandomId();
-
+        let idSubscript = 1;
         this._scene = scene || EngineStore.LastCreatedScene;
+
+        this.id = name || Tools.RandomId();
+        while (this._scene.getMaterialByID(this.id)) {
+            this.id = name + " " + idSubscript++;
+        }
+
         this.uniqueId = this._scene.getUniqueId();
 
         if (this._scene.useRightHandedSystem) {
@@ -1146,6 +1166,7 @@ export class Material implements IAnimatable {
     private static readonly _TextureDirtyCallBack = (defines: MaterialDefines) => defines.markAsTexturesDirty();
     private static readonly _FresnelDirtyCallBack = (defines: MaterialDefines) => defines.markAsFresnelDirty();
     private static readonly _MiscDirtyCallBack = (defines: MaterialDefines) => defines.markAsMiscDirty();
+    private static readonly _PrePassDirtyCallBack = (defines: MaterialDefines) => defines.markAsPrePassDirty();
     private static readonly _LightsDirtyCallBack = (defines: MaterialDefines) => defines.markAsLightDirty();
     private static readonly _AttributeDirtyCallBack = (defines: MaterialDefines) => defines.markAsAttributesDirty();
 
@@ -1197,6 +1218,10 @@ export class Material implements IAnimatable {
             Material._DirtyCallbackArray.push(Material._MiscDirtyCallBack);
         }
 
+        if (flag & Material.PrePassDirtyFlag) {
+            Material._DirtyCallbackArray.push(Material._PrePassDirtyCallBack);
+        }
+
         if (Material._DirtyCallbackArray.length) {
             this._markAllSubMeshesAsDirty(Material._RunDirtyCallBacks);
         }
@@ -1233,8 +1258,22 @@ export class Material implements IAnimatable {
     }
 
     /**
- * Indicates that we need to re-calculated for all submeshes
- */
+     * Indicates that the scene should check if the rendering now needs a prepass
+     */
+    protected _markScenePrePassDirty() {
+        if (this.getScene().blockMaterialDirtyMechanism) {
+            return;
+        }
+
+        const prePassRenderer = this.getScene().enablePrePassRenderer();
+        if (prePassRenderer) {
+            prePassRenderer.markAsDirty();
+        }
+    }
+
+    /**
+     * Indicates that we need to re-calculated for all submeshes
+     */
     protected _markAllSubMeshesAsAllDirty() {
         this._markAllSubMeshesAsDirty(Material._AllDirtyCallBack);
     }
@@ -1289,10 +1328,27 @@ export class Material implements IAnimatable {
     }
 
     /**
+     * Indicates that prepass needs to be re-calculated for all submeshes
+     */
+    protected _markAllSubMeshesAsPrePassDirty() {
+        this._markAllSubMeshesAsDirty(Material._MiscDirtyCallBack);
+    }
+
+    /**
      * Indicates that textures and misc need to be re-calculated for all submeshes
      */
     protected _markAllSubMeshesAsTexturesAndMiscDirty() {
         this._markAllSubMeshesAsDirty(Material._TextureAndMiscDirtyCallBack);
+    }
+
+    /**
+     * Sets the required values to the prepass renderer.
+     * @param prePassRenderer defines the prepass renderer to setup.
+     * @returns true if the pre pass is needed.
+     */
+    public setPrePassRenderer(prePassRenderer: PrePassRenderer): boolean {
+        // Do Nothing by default
+        return false;
     }
 
     /**

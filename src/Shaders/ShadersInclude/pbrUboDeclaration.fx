@@ -40,8 +40,9 @@ uniform Material
 
     uniform vec2 vClearCoatParams;
     uniform vec4 vClearCoatRefractionParams;
-    uniform vec2 vClearCoatInfos;
+    uniform vec4 vClearCoatInfos;
     uniform mat4 clearCoatMatrix;
+    uniform mat4 clearCoatRoughnessMatrix;
     uniform vec2 vClearCoatBumpInfos;
     uniform vec2 vClearCoatTangentSpaceParams;
     uniform mat4 clearCoatBumpMatrix;
@@ -56,8 +57,9 @@ uniform Material
 
     uniform vec4 vSheenColor;
     uniform float vSheenRoughness;
-    uniform vec2 vSheenInfos;
+    uniform vec4 vSheenInfos;
     uniform mat4 sheenMatrix;
+    uniform mat4 sheenRoughnessMatrix;
 
     uniform vec3 vRefractionMicrosurfaceInfos;
     uniform vec2 vRefractionFilteringInfo;
@@ -69,6 +71,7 @@ uniform Material
     uniform vec3 vDiffusionDistance;
     uniform vec4 vTintColor;
     uniform vec3 vSubSurfaceIntensity;
+    uniform float scatteringDiffusionProfile;
 
     uniform vec4 vDetailInfos;
     uniform mat4 detailMatrix;

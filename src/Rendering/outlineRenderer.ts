@@ -183,6 +183,7 @@ export class OutlineRenderer implements ISceneComponent {
         this._effect.setFloat("offset", useOverlay ? 0 : renderingMesh.outlineWidth);
         this._effect.setColor4("color", useOverlay ? renderingMesh.overlayColor : renderingMesh.outlineColor, useOverlay ? renderingMesh.overlayAlpha : material.alpha);
         this._effect.setMatrix("viewProjection", scene.getTransformMatrix());
+        this._effect.setMatrix("world", effectiveMesh.getWorldMatrix());
 
         // Bones
         if (renderingMesh.useBones && renderingMesh.computeBonesUsingShaders && renderingMesh.skeleton) {
@@ -274,7 +275,7 @@ export class OutlineRenderer implements ISceneComponent {
         if (useInstances) {
             defines.push("#define INSTANCES");
             MaterialHelper.PushAttributesForInstances(attribs);
-            if (subMesh.getRenderingMesh().hasInstances) {
+            if (subMesh.getRenderingMesh().hasThinInstances) {
                 defines.push("#define THIN_INSTANCES");
             }
         }
@@ -299,7 +300,7 @@ export class OutlineRenderer implements ISceneComponent {
         this._savedDepthWrite = this._engine.getDepthWrite();
         if (mesh.renderOutline) {
             var material = subMesh.getMaterial();
-            if (material && material.needAlphaBlending()) {
+            if (material && material.needAlphaBlendingForMesh(mesh)) {
                 this._engine.cacheStencilState();
                 // Draw only to stencil buffer for the original mesh
                 // The resulting stencil buffer will be used so the outline is not visible inside the mesh when the mesh is transparent
@@ -321,7 +322,7 @@ export class OutlineRenderer implements ISceneComponent {
             this.render(subMesh, batch);
             this._engine.setDepthWrite(this._savedDepthWrite);
 
-            if (material && material.needAlphaBlending()) {
+            if (material && material.needAlphaBlendingForMesh(mesh)) {
                 this._engine.restoreStencilState();
             }
         }
